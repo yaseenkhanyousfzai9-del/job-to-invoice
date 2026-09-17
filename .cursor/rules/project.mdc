@@ -1,0 +1,46 @@
+---
+description: Permanent Job to Invoice implementation contract. PRD is authoritative; VERIFIED is the only complete status.
+alwaysApply: true
+---
+
+# Job to Invoice — project rule
+
+`docs/PRD.md` is the authoritative product specification. It overrides generic SOP defaults (including mobile-direct Supabase CRUD and v1 Android).
+
+## Before implementing requested work
+
+1. Read `ENGINEERING_CONTRACT.md`.
+2. Read the relevant PRD requirement.
+3. Read `docs/ARCHITECTURE.md`.
+4. Read `docs/DATABASE.md` for database work.
+5. Read `docs/API.md` for API work.
+6. Read `docs/REQUIREMENTS_MATRIX.md`.
+7. Inspect existing implementation.
+8. Identify reusable components/code.
+9. Implement only requested scope.
+10. Add relevant states and tests (loading, empty, error, offline, authz).
+11. Run typecheck, lint, and tests.
+12. Fix failures caused by the change.
+13. Inspect the diff.
+14. Update `docs/REQUIREMENTS_MATRIX.md`.
+15. Report what changed and what remains unverified.
+
+## Never
+
+- Treat the presence of a screen, button, API, or table as proof that a feature works.
+- Trust client-supplied `workspace_id` or `customer_id` as authorization.
+- Write commercial data from mobile/portal through Supabase REST.
+- Put private keys in client code.
+- Add a UNIQUE constraint on customer `normalized_email` (CUS01).
+- Mutate published document snapshots when editing a Customer.
+- Mark a requirement VERIFIED without evidence.
+
+Only **VERIFIED** counts as complete.
+
+```ts
+// BAD — client workspace header as auth
+await api.post("/v1/customers", body, { headers: { "X-Workspace-Id": workspaceId } });
+
+// GOOD — bearer identity; server derives workspace from membership
+await api.post("/v1/customers", body, { headers: { Authorization: `Bearer ${accessToken}` } });
+```
