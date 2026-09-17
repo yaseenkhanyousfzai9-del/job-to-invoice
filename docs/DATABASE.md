@@ -16,7 +16,7 @@ Private schema: `app` (not `public`). Client GRANTs revoked. `FORCE ROW LEVEL SE
 - No `ON DELETE CASCADE` of published financial records. Customer delete of an unreferenced row is ordinary CRUD; it must fail if a job still references the customer.
 - Mutable rows: `version integer NOT NULL DEFAULT 1`.
 - `created_by UUID NOT NULL` is an application actor (`app_users.id`, or a named service actor later).
-- JSON columns validate against checked-in schemas on write and read (DB02).
+- JSON columns validate against checked-in schemas on write and read (DB02). Customer `billing_address_json` uses `packages/domain` `UsAddress` / `parseOptionalBillingAddress`.
 - Enums: constrained text + migration-permitted values.
 - List/pagination index on every list path: `(workspace_id, updated_at DESC, id DESC)` (DB03).
 

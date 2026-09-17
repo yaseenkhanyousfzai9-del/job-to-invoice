@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01 is IMPLEMENTED. CUST-AUTH-01 owner bootstrap (`R-CUS-PRE-02`–`R-CUS-PRE-04`) is IMPLEMENTED in code and automated tests, not VERIFIED against a live Supabase project. AUTHZ01 is implemented for owner identity/workspace only. CUS01, CUS02, S06, S07, and S19 are not implemented.
+Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01 and CUST-AUTH-01 are IMPLEMENTED. CUST-DOMAIN-01 Customer field contracts are IMPLEMENTED (unit tests; not VERIFIED via API/UI). AUTHZ01 is implemented for owner identity/workspace only. CUS01, CUS02, S06, S07, and S19 are not implemented.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -32,7 +32,7 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 | R-GOV-02 | ARC01–ARC05 | `docs/ARCHITECTURE.md` records Fastify boundary and tenant context | n/a | n/a | n/a | Document review | VERIFIED |
 | R-GOV-03 | DB01–DB03 CUS01 | `docs/DATABASE.md` specifies customers without unique email | n/a | n/a | n/a | Document review | VERIFIED |
 | R-GOV-04 | API01–API03 S19 | `docs/API.md` specifies Customer routes including additive GET by id | n/a | n/a | n/a | Document review | VERIFIED |
-| R-GOV-05 | SOP §15 | `docs/DECISIONS.md` DEC-CUST-001…007 | n/a | n/a | n/a | Document review | VERIFIED |
+| R-GOV-05 | SOP §15 | `docs/DECISIONS.md` DEC-CUST-001…008 | n/a | n/a | n/a | Document review | VERIFIED |
 
 ---
 
@@ -73,13 +73,13 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-22 | VAL01 | Customer display name 1–120; trim outer whitespace; reject control characters; preserve Unicode | S07 | Shared domain schema + API 422 | none (PRD allowlist) | Unit + API; QA55 Unicode | PENDING |
-| R-CUS-23 | VAL01 | Email max 254; normalize for lookup without provider-specific dot/plus rewriting; preserve original presentation | S07 | `email` + `normalized_email` | none (PRD allowlist) | `a.b+c@gmail.com` not collapsed to gmail-provider rules | PENDING |
-| R-CUS-24 | VAL01 | Customer email optional on the record; mandatory later for approval requests; optional for manually shared direct invoices | S07, later S11 | Nullable `email` | none (PRD allowlist) | Create without email succeeds | PENDING |
-| R-CUS-25 | VAL01 DEC-CUST-003 | Phone optional; E.164 where parsable; unparsable supplied phone blocks save; no country guessing; no raw override | S07 | Domain phone parser | none (PRD allowlist) | No auto `+1`; invalid 422; omit phone succeeds | PENDING |
-| R-CUS-26 | VAL02 | When billing address is present: US line1 ≤150, line2 optional ≤150, city ≤80, two-letter state, ZIP 5 or ZIP+4 | S07 | `billing_address_json` schema | none (PRD allowlist) | Invalid state/ZIP 422; missing address allowed | PENDING |
+| R-CUS-22 | VAL01 | Customer display name 1–120; trim outer whitespace; reject control characters; preserve Unicode | S07 | Shared domain schema + API 422 | none (PRD allowlist) | Unit + API; QA55 Unicode | IMPLEMENTED |
+| R-CUS-23 | VAL01 | Email max 254; normalize for lookup without provider-specific dot/plus rewriting; preserve original presentation | S07 | `email` + `normalized_email` | none (PRD allowlist) | `a.b+c@gmail.com` not collapsed to gmail-provider rules | IMPLEMENTED |
+| R-CUS-24 | VAL01 | Customer email optional on the record; mandatory later for approval requests; optional for manually shared direct invoices | S07, later S11 | Nullable `email` | none (PRD allowlist) | Create without email succeeds | IMPLEMENTED |
+| R-CUS-25 | VAL01 DEC-CUST-003 | Phone optional; E.164 where parsable; unparsable supplied phone blocks save; no country guessing; no raw override | S07 | Domain phone parser | none (PRD allowlist) | No auto `+1`; invalid 422; omit phone succeeds | IMPLEMENTED |
+| R-CUS-26 | VAL02 | When billing address is present: US line1 ≤150, line2 optional ≤150, city ≤80, two-letter state, ZIP 5 or ZIP+4 | S07 | `billing_address_json` schema | none (PRD allowlist) | Invalid state/ZIP 422; missing address allowed | IMPLEMENTED |
 | R-CUS-27 | VAL02 | Billing address is distinct from job site address | S06, S07 | Separate `billing_address_json` vs `jobs.site_address_json` | none (PRD allowlist) | Changing billing does not change site | PENDING |
-| R-CUS-28 | VAL04 / API03 | Constraints enforced client-side for convenience and server-side for enforcement; unknown fields rejected | S07 | API03 reject extra properties | none (PRD allowlist) | Extra field 422; client validation can be bypassed and server still rejects | PENDING |
+| R-CUS-28 | VAL04 / API03 | Constraints enforced client-side for convenience and server-side for enforcement; unknown fields rejected | S07 | API03 reject extra properties | none (PRD allowlist) | Extra field 422; client validation can be bypassed and server still rejects | IMPLEMENTED |
 
 ### Database
 

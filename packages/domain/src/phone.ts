@@ -1,5 +1,7 @@
 const E164_PATTERN = /^\+[1-9]\d{1,14}$/;
 
+/** Optional phone: omitted is valid. Supplied values must already be E.164. No country guessing. */
+
 export function validateOptionalE164(raw: unknown): {
   value: string | null;
   error: string | undefined;

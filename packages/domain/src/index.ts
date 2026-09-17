@@ -1,8 +1,14 @@
 export { AppError, validationFailed, unauthenticated, forbidden, conflict } from "./errors.ts";
 export { createRequestId, isUuid } from "./ids.ts";
-export { normalizeEmail, validateEmail, maskEmail } from "./email.ts";
+export { normalizeEmail, validateEmail, validateOptionalEmail, maskEmail } from "./email.ts";
 export { validateOptionalE164 } from "./phone.ts";
-export { US_STATES, parseUsAddress, type UsAddress, type UsState } from "./address.ts";
+export {
+  US_STATES,
+  parseUsAddress,
+  parseOptionalBillingAddress,
+  type UsAddress,
+  type UsState,
+} from "./address.ts";
 export {
   CURRENT_TERMS_VERSION,
   CURRENT_PRIVACY_VERSION,
@@ -30,3 +36,30 @@ export {
   type OwnerUserSummary,
   type WorkspaceSummary,
 } from "./auth.ts";
+export {
+  CUSTOMER_LIST_DEFAULT_LIMIT,
+  CUSTOMER_LIST_MAX_LIMIT,
+  CUSTOMER_NAME_MAX,
+  CUSTOMER_NAME_MIN,
+  DUPLICATE_CUSTOMER_EMAIL,
+  duplicateCustomerEmailConflict,
+  duplicateEmailWarning,
+  isCustomerArchived,
+  nextArchivedAt,
+  parseCreateCustomerInput,
+  parseCustomerArchiveCommand,
+  parseCustomerListQuery,
+  parseCustomerName,
+  parseUpdateCustomerInput,
+  type BillingAddress,
+  type CreateCustomerInput,
+  type Customer,
+  type CustomerArchiveCommand,
+  type CustomerId,
+  type CustomerListQuery,
+  type CustomerListState,
+  type CustomerRecord,
+  type DuplicateCustomerEmailWarning,
+  type DuplicateCustomerMatch,
+  type UpdateCustomerInput,
+} from "./customer.ts";

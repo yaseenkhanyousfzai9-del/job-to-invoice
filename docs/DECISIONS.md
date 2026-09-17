@@ -157,3 +157,18 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** Yes once a durable test database is available.  
 **Migration/API implication:** `0001_auth_workspace.sql` remains the production schema source.  
 **Status:** ACCEPTED
+
+---
+
+## DEC-CUST-008
+
+**ID:** DEC-CUST-008  
+**Date:** 2026-09-18  
+**Question:** What is the exact Customer `normalized_email` algorithm?  
+**Decision:** Trim outer whitespace. Split on the last `@`. Unicode-case-fold the local part and the domain with `toLowerCase`. Concatenate as `local@domain`. Do **not** remove Gmail dots, strip plus-tags, or apply any other provider-specific alias rewriting. The stored `email` is the trimmed original presentation. `normalized_email` is null iff `email` is null. Duplicate detection later compares `normalized_email` inside a workspace and is not a uniqueness constraint (DEC-CUST-002).  
+**PRD evidence:** VAL01 “normalized for lookup without provider-specific dot/plus rewriting; preserve original presentation.”  
+**Reason:** Lowercasing the domain (and local part for consistent comparison) is conservative lookup behavior. Removing dots or plus-tags would collapse distinct mailboxes.  
+**Requirements affected:** VAL01, CUS01, CUST-DOMAIN-01, R-CUS-23  
+**Reversible:** Yes for additional Unicode case-folding details; not for the no-Gmail-rewrite rule.  
+**Migration/API implication:** `customers.normalized_email` stores this lookup form only.  
+**Status:** ACCEPTED

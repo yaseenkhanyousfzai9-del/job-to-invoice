@@ -45,20 +45,23 @@ function lineError(raw: unknown, field: string, max: number, required: boolean):
   return { value: trimmed, error: undefined };
 }
 
-export function parseUsAddress(raw: unknown): {
+export function parseUsAddress(
+  raw: unknown,
+  fieldPrefix = "address",
+): {
   value: UsAddress | undefined;
   fieldErrors: Record<string, string[]>;
 } {
   const fieldErrors: Record<string, string[]> = {};
   if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) {
-    fieldErrors["address"] = ["Enter a US business address."];
+    fieldErrors[fieldPrefix] = ["Enter a US business address."];
     return { value: undefined, fieldErrors };
   }
   const body = raw as Record<string, unknown>;
   const allowed = new Set(["line1", "line2", "city", "state", "zip"]);
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) {
-      fieldErrors[key] = ["Unknown field."];
+      fieldErrors[`${fieldPrefix}.${key}`] = ["Unknown field."];
     }
   }
 
@@ -68,14 +71,14 @@ export function parseUsAddress(raw: unknown): {
   const stateRaw = typeof body["state"] === "string" ? body["state"].trim().toUpperCase() : "";
   const zipRaw = typeof body["zip"] === "string" ? body["zip"].trim() : "";
 
-  if (line1.error) fieldErrors["address.line1"] = [line1.error];
-  if (line2.error) fieldErrors["address.line2"] = [line2.error];
-  if (city.error) fieldErrors["address.city"] = [city.error];
+  if (line1.error) fieldErrors[`${fieldPrefix}.line1`] = [line1.error];
+  if (line2.error) fieldErrors[`${fieldPrefix}.line2`] = [line2.error];
+  if (city.error) fieldErrors[`${fieldPrefix}.city`] = [city.error];
   if (!STATE_SET.has(stateRaw)) {
-    fieldErrors["address.state"] = ["Select a two-letter US state."];
+    fieldErrors[`${fieldPrefix}.state`] = ["Select a two-letter US state."];
   }
   if (!ZIP_PATTERN.test(zipRaw)) {
-    fieldErrors["address.zip"] = ["Enter a 5-digit ZIP or ZIP+4."];
+    fieldErrors[`${fieldPrefix}.zip`] = ["Enter a 5-digit ZIP or ZIP+4."];
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -92,4 +95,18 @@ export function parseUsAddress(raw: unknown): {
     },
     fieldErrors,
   };
+}
+
+export function parseOptionalBillingAddress(raw: unknown): {
+  value: UsAddress | null;
+  fieldErrors: Record<string, string[]>;
+} {
+  if (raw === undefined || raw === null) {
+    return { value: null, fieldErrors: {} };
+  }
+  const parsed = parseUsAddress(raw, "billing_address");
+  if (!parsed.value) {
+    return { value: null, fieldErrors: parsed.fieldErrors };
+  }
+  return { value: parsed.value, fieldErrors: parsed.fieldErrors };
 }

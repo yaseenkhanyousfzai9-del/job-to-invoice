@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01 and CUST-AUTH-01 are IMPLEMENTED, not VERIFIED. Live Supabase OTP is BLOCKED until a development Auth project is configured. Customer behaviour is not implemented.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. Live Supabase OTP/Postgres apply is BLOCKED until a development project is configured. Customer persistence and UI are not implemented.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -446,6 +446,18 @@ Domain package is the only place Customer field rules are defined. Mobile and AP
 ### Evidence required before VERIFIED
 
 Passing domain tests mapped to VAL01/VAL02/CUS01. No hardcoded US `+1` prefixing.
+
+### Evidence (CUST-DOMAIN-01)
+
+Recorded 2026-09-18:
+
+- `packages/domain` Customer create/update/list/archive contracts and VAL01/VAL02 field validation
+- Email lookup normalization documented as DEC-CUST-008 (no Gmail dot/plus rewriting)
+- Phone: optional; supplied values must already be E.164; no country guessing
+- Duplicate-email type is a 409 confirmation contract, not a uniqueness rule; identical names allowed
+- Domain unit tests pass; no Customer SQL, HTTP routes, or screens
+
+Status of this slice: **IMPLEMENTED**, not VERIFIED (no API/UI integration).
 
 ---
 
@@ -1755,6 +1767,7 @@ See `docs/DECISIONS.md`.
 | DEC-CUST-005 | Archive: Idempotency-Key yes, If-Match not required; version increments on change |
 | DEC-CUST-006 | `GET /v1/jobs?customer_id=`; jobs stay on `jobs` |
 | DEC-CUST-007 | Master record only; apply-to-draft deferred to Quote |
+| DEC-CUST-008 | `normalized_email` = trim + case-fold local and domain; no Gmail dot/plus rewrite |
 
 Non-critical assumptions (unchanged):
 
@@ -1773,11 +1786,14 @@ Non-critical assumptions (unchanged):
 
 **CUST-AUTH-01:** IMPLEMENTED (API tests, domain tests, mobile OTP-error tests, Expo config). Not VERIFIED: no development Supabase project, no live OTP mailbox, migration not applied to a hosted database.
 
+**CUST-DOMAIN-01:** IMPLEMENTED (domain unit tests for VAL01/VAL02 create/update/list/archive contracts). Not VERIFIED via API/UI.
+
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP against Supabase Auth (QA01/QA02) needs a development Auth project.
-2. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
-3. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
-4. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
+2. CUST-DB-01 migration apply and RLS tests need that same development Postgres. Schema files can be written after review; verification is blocked until the database exists.
+3. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
+4. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
+5. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-CUST-DOMAIN-01 is the next implementation slice after developer review. Do not start S19 UI or Customer CRUD first.
+CUST-DB-01 is the next implementation slice after developer review, but applying/verifying it is blocked until development Supabase/Postgres is configured. Do not start Customer API/UI first.
