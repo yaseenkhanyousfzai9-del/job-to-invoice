@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01 runtime exists (`R-CUS-PRE-01` IMPLEMENTED, not VERIFIED). AUTHZ01, CUS01, CUS02, S06, S07, and S19 are not implemented.
+Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01 is IMPLEMENTED. CUST-AUTH-01 owner bootstrap (`R-CUS-PRE-02`–`R-CUS-PRE-04`) is IMPLEMENTED in code and automated tests, not VERIFIED against a live Supabase project. AUTHZ01 is implemented for owner identity/workspace only. CUS01, CUS02, S06, S07, and S19 are not implemented.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -145,14 +145,14 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 ## Prerequisites for Customer (not Customer UI)
 
-These are required for Customer to be production-correct. They are also PENDING. They are not a complete Auth or Jobs matrix.
+These are required for Customer to be production-correct. They are not a complete Auth or Jobs matrix. Only **VERIFIED** counts as complete.
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
 | R-CUS-PRE-01 | ARC01 ARC05 DEL01 | TypeScript monorepo with `apps/mobile`, `apps/api` Fastify, `packages/domain`; mobile does not write commercial rows via Supabase REST | n/a | API process | none | Boot/typecheck | IMPLEMENTED |
-| R-CUS-PRE-02 | ACC01 S02 S03 QA01 QA02 | Owner email OTP auth; generic responses; secure session | S02 S03 | Supabase Auth + `GET /me` | `signup_verified` when bootstrap exists | QA01 QA02 | PENDING |
-| R-CUS-PRE-03 | DEC04 POST /workspace | Exactly one workspace and active owner membership, created atomically | S04 minimum | `workspaces`, `memberships` | `onboarding_completed` later | Second workspace rejected | PENDING |
-| R-CUS-PRE-04 | AUTHZ01 ARC02 ARC03 | JWT verified; tenant context from membership; FORCE RLS | API kernel | private schema | none | Forged workspace_id ignored | PENDING |
+| R-CUS-PRE-02 | ACC01 S02 S03 QA01 QA02 | Owner email OTP auth; generic responses; secure session | S02 S03 | Supabase Auth + `GET /me` | `signup_verified` when bootstrap exists | QA01 QA02 | IMPLEMENTED |
+| R-CUS-PRE-03 | DEC04 POST /workspace | Exactly one workspace and active owner membership, created atomically | S04 minimum | `workspaces`, `memberships` | `onboarding_completed` later | Second workspace rejected | IMPLEMENTED |
+| R-CUS-PRE-04 | AUTHZ01 ARC02 ARC03 | JWT verified; tenant context from membership; FORCE RLS | API kernel | private schema | none | Forged workspace_id ignored | IMPLEMENTED |
 | R-CUS-PRE-05 | POST /jobs DB02 jobs | Minimum jobs table and create/list so Customer picker, associated jobs, and referenced-delete are real | S06, S19 | `jobs.customer_id` | `job_created` | FK + picker bind | PENDING |
 
 ---

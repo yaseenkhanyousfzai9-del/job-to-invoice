@@ -14,7 +14,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "allowJs": true
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@job-to-invoice/domain": ["../../packages/domain/src/index.ts"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"],
   "exclude": ["node_modules"]

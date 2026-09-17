@@ -1,6 +1,6 @@
 # Architecture
 
-Status: CUST-FOUNDATION-01 runtime skeleton exists. Auth, tenant isolation, and commercial tables are not implemented.
+Status: CUST-AUTH-01 owner authentication kernel exists in code (JWT verification, GET /v1/me, POST /v1/workspace, S01–S04). Live Supabase OTP and applied production migrations are not VERIFIED. Customer commercial tables are not implemented.
 
 Authority: PRD section 19 (ARC01–ARC05), plus AUTHZ01, ACC01–ACC02, SYNC01–SYNC06, DEC01, DEC04, DEC10. SOP process applies; SOP default stack does not override this document.
 
@@ -133,7 +133,7 @@ QA03 is a release test: two owners requesting each other’s customer/job IDs le
 
 ## Transaction-local workspace context
 
-Name and setter are implementation details recorded at CUST-FOUNDATION-01 / CUST-AUTH-01. Requirements:
+Transaction-local GUCs (CUST-AUTH-01): `app.auth_user_id` then `app.workspace_id`, set with `set_config(..., true)` inside the request transaction. Requirements:
 
 - Set only after verified membership.
 - `SET LOCAL` (or equivalent) inside the request transaction.

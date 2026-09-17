@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01 runtime exists (IMPLEMENTED, not VERIFIED). Customer behaviour is not implemented.
+Status: CUST-FOUNDATION-01 and CUST-AUTH-01 are IMPLEMENTED, not VERIFIED. Live Supabase OTP is BLOCKED until a development Auth project is configured. Customer behaviour is not implemented.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -361,6 +361,21 @@ Owner can sign in and `GET /me` returns the workspace owned by that identity. Is
 ### Evidence required before VERIFIED
 
 Staging OTP against real Supabase Auth (not a hardcoded code), JWT verification tests, SQL proving a second workspace is rejected, no account-enumeration difference in responses.
+
+### Evidence (CUST-AUTH-01)
+
+Recorded 2026-09-18:
+
+- `GET /v1/me` and `POST /v1/workspace` implemented with Bearer JWT verification (`jose` JWKS; tests use a local RS256 key)
+- Unauthenticated `/v1/me` and `/v1/workspace` → 401
+- Workspace create is atomic in the store (workspace + owner membership + job_allowances); replay/idempotency and second workspace rejected
+- Client `owner_user_id` / `workspace_id` cannot hijack another owner
+- Suspended account cannot create a workspace
+- Migration `supabase/migrations/0001_auth_workspace.sql` (no Customer tables)
+- Mobile S01–S04, secure-session storage, sign-out, and routing exist
+- Live OTP/provider and applied RLS are **not** VERIFIED (no development Supabase project in this environment)
+
+Status of this slice: **IMPLEMENTED**, not VERIFIED. Provider-dependent QA01/QA02 remain unverified.
 
 ---
 
@@ -1756,11 +1771,13 @@ Non-critical assumptions (unchanged):
 
 **CUST-FOUNDATION-01:** IMPLEMENTED (typecheck, lint, tests). Not VERIFIED on a physical iPhone or production build.
 
+**CUST-AUTH-01:** IMPLEMENTED (API tests, domain tests, mobile OTP-error tests, Expo config). Not VERIFIED: no development Supabase project, no live OTP mailbox, migration not applied to a hosted database.
+
 **Still true before Customer behaviour is production-correct:**
 
-1. Owner authentication and workspace bootstrap are not built (CUST-AUTH-01).
+1. Live owner OTP against Supabase Auth (QA01/QA02) needs a development Auth project.
 2. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 3. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 4. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-CUST-AUTH-01 is the next implementation slice. Do not start S19 UI or Customer CRUD first.
+CUST-DOMAIN-01 is the next implementation slice after developer review. Do not start S19 UI or Customer CRUD first.

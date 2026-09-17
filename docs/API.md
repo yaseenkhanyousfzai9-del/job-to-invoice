@@ -1,6 +1,6 @@
 # API
 
-Status: specification. No Fastify routes have been implemented yet.
+Status: CUST-AUTH-01 implements `GET /v1/me` and `POST /v1/workspace` with Bearer JWT verification. Customer and Jobs routes are not implemented.
 
 Authority: PRD sections 21–22 (API01–API03, endpoint inventory). Additive Customer Detail read: DEC-CUST-001. Duplicate-email protocol: DEC-CUST-002. Jobs filter: DEC-CUST-006.
 

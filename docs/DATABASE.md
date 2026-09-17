@@ -1,6 +1,6 @@
 # Database
 
-Status: specification. No migrations have been applied.
+Status: CUST-AUTH-01 migration `supabase/migrations/0001_auth_workspace.sql` exists (app_users, workspaces, memberships, job_allowances, idempotency_records, private schema `app`, FORCE RLS). It has not been applied to a live Supabase project in this slice. Customer tables are not in this migration.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 

@@ -1,44 +1,50 @@
-import { StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, layout, typography } from "../src/theme/tokens";
+import { Redirect, useRouter } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
+import { Body, PrimaryButton, Screen, Secondary, TextLink, Title } from "../src/components/ui";
+import { useAuth } from "../src/providers/AuthProvider";
+import { colors } from "../src/theme/tokens";
 
-export default function HomeScreen() {
+export default function WelcomeScreen() {
+  const router = useRouter();
+  const auth = useAuth();
+
+  if (auth.loading) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (auth.navigation === "setup") {
+    return <Redirect href="/setup" />;
+  }
+  if (auth.navigation === "app") {
+    return <Redirect href="/(app)" />;
+  }
+  if (auth.navigation === "suspended") {
+    return <Redirect href="/suspended" />;
+  }
+
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <View style={styles.container}>
-        <Text style={styles.title} accessibilityRole="header">
-          Job to Invoice
-        </Text>
-        <Text style={styles.body}>Development foundation</Text>
-        <Text style={styles.secondary}>
-          Login, customers, jobs, quotes, and invoices are not implemented yet.
-        </Text>
-      </View>
-    </SafeAreaView>
+    <Screen>
+      <Title>Job to Invoice</Title>
+      <Body>
+        Create professional quotes, get customer approval, and turn accepted work into invoices.
+      </Body>
+      <Secondary>
+        No purchase is required to start. Quotes are not created until after you sign in and set up
+        your business.
+      </Secondary>
+      <PrimaryButton
+        label="Create my first quote"
+        onPress={() => router.push("/sign-in")}
+      />
+      <PrimaryButton label="Sign in" onPress={() => router.push("/sign-in")} />
+      <TextLink label="Terms" onPress={() => router.push("/legal/terms")} />
+      <TextLink label="Privacy" onPress={() => router.push("/legal/privacy")} />
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    padding: layout.screenGutter,
-    gap: 8,
-  },
-  title: {
-    fontSize: typography.screenTitle.fontSize,
-    fontWeight: typography.screenTitle.fontWeight,
-    color: colors.primary,
-  },
-  body: {
-    fontSize: typography.body.fontSize,
-    color: colors.text,
-  },
-  secondary: {
-    fontSize: typography.secondary.fontSize,
-    color: colors.secondary,
-  },
-});

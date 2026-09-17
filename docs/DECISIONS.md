@@ -127,3 +127,33 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** Yes, with lockfile and CI changes.  
 **Migration/API implication:** Commit `package-lock.json`. All installs use `npm install`.  
 **Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-001
+
+**ID:** DEC-AUTH-001  
+**Date:** 2026-09-18  
+**Question:** How does the API cryptographically verify Supabase owner access tokens?  
+**Decision:** Use `jose` with a remote JWKS. Configure `AUTH_ISSUER`, `AUTH_AUDIENCE` (Supabase default `authenticated`), and `AUTH_JWKS_URL` (or derive JWKS from `AUTH_ISSUER` / `AUTH_PROJECT_URL`). Verify signature, issuer, audience, and expiry. Map `sub` to `app_users.auth_user_id`. Do not decode tokens without verification. Do not put the JWT secret or JWKS in the mobile app. Automated tests inject a local RS256 key pair.  
+**PRD evidence:** ACC02, AUTHZ01, SREF06, ARC02.  
+**Reason:** Current Supabase Auth access tokens are JWKS-verifiable. HS256 shared secrets are not required for this slice and would expand the secret surface.  
+**Requirements affected:** ACC02, AUTHZ01, CUST-AUTH-01, R-CUS-PRE-04  
+**Reversible:** Yes, if a later provider change requires a different supported verification API, with a new decision.  
+**Migration/API implication:** Server-only env vars. No schema change.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-002
+
+**ID:** DEC-AUTH-002  
+**Date:** 2026-09-18  
+**Question:** How are auth/workspace tests run without a live Postgres or Supabase project?  
+**Decision:** API integration tests use an in-memory store that enforces the same uniqueness rules (one workspace per owner, idempotency replay/mismatch). Development may use that store only when `DATABASE_URL_API` is unset. Staging/production require `DATABASE_URL_API`. Live OTP, JWKS against a real project, and applied RLS are not claimed VERIFIED until a development Supabase project is configured.  
+**PRD evidence:** ACC01 must use Supabase Auth, not a custom OTP store. OPS01 separate environments.  
+**Reason:** Foundation tests must not require production credentials. Faking a successful OTP is forbidden.  
+**Requirements affected:** QA01, QA02, CUST-AUTH-01  
+**Reversible:** Yes once a durable test database is available.  
+**Migration/API implication:** `0001_auth_workspace.sql` remains the production schema source.  
+**Status:** ACCEPTED
