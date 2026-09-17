@@ -112,3 +112,18 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** No without a PRD change to auto-merge drafts.  
 **Migration/API implication:** No Customer trigger on `document_drafts`. Quote feature adds the apply command later.  
 **Status:** ACCEPTED
+
+---
+
+## DEC-FOUND-001
+
+**ID:** DEC-FOUND-001  
+**Date:** 2026-09-17  
+**Question:** Which package manager should the monorepo use?  
+**Decision:** npm workspaces. Root `package.json` is private with `workspaces: ["apps/*", "packages/*"]`. Do not introduce pnpm, yarn, or bun unless a later numbered decision records a migration that preserves installs and CI.  
+**PRD evidence:** ARC01 TypeScript monorepo; ARC05 pin lockfile. The PRD does not require a specific Node package manager.  
+**Reason:** No package manager was previously recorded. npm is the default Node toolchain and matches `package-lock.json`.  
+**Requirements affected:** CUST-FOUNDATION-01, DEL01, ARC05  
+**Reversible:** Yes, with lockfile and CI changes.  
+**Migration/API implication:** Commit `package-lock.json`. All installs use `npm install`.  
+**Status:** ACCEPTED

@@ -1,6 +1,6 @@
 # Architecture
 
-Status: specification. No runtime has been implemented yet.
+Status: CUST-FOUNDATION-01 runtime skeleton exists. Auth, tenant isolation, and commercial tables are not implemented.
 
 Authority: PRD section 19 (ARC01–ARC05), plus AUTHZ01, ACC01–ACC02, SYNC01–SYNC06, DEC01, DEC04, DEC10. SOP process applies; SOP default stack does not override this document.
 

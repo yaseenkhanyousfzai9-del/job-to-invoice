@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!**/.env.example
 
 .expo/
 .next/
@@ -21,3 +22,9 @@ Thumbs.db
 *.key
 *.p12
 *.mobileprovision
+
+*.tsbuildinfo
+.turbo/
+.vercel/
+apps/mobile/ios/
+apps/mobile/android/

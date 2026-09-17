@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: PLANNING. Governance and Customer contracts exist. **No application code, packages, migrations, or screens are implemented.** Do not mark Customer behaviour complete.
+Status: CUST-FOUNDATION-01 runtime exists (IMPLEMENTED, not VERIFIED). Customer behaviour is not implemented.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -261,9 +261,19 @@ Tokens support Dynamic Type and 44×44 pt minimum targets (UI02). Light appearan
 - No Customer API, table, or form.
 - PRD stack choices are visible in the repo (Fastify API, domain package, Expo app). Mobile has no Supabase service-role key.
 
-### Evidence required before VERIFIED
+### Evidence (CUST-FOUNDATION-01)
 
-Local boot logs, CI typecheck/lint, proof that commercial writes are not configured through Supabase REST, no secrets in source.
+Recorded 2026-09-17:
+
+- npm workspaces monorepo: `apps/mobile`, `apps/portal`, `apps/admin`, `apps/api`, `apps/worker`, `packages/domain`
+- `npm run typecheck`, `npm run lint`, and `npm test` pass
+- API `GET /health` automated test returns `{ status: "ok" }`
+- Expo public config validates (SDK 53). No physical iPhone or production/TestFlight build
+- Mobile shows a truthful foundation screen only (no fake Customers/Jobs/Login)
+- No Customer routes, migrations, or auth
+- Next: CUST-AUTH-01 is unblocked for implementation, not VERIFIED
+
+Status of this slice: **IMPLEMENTED**, not VERIFIED (no device boot log, no production build).
 
 ---
 
@@ -1744,19 +1754,13 @@ Non-critical assumptions (unchanged):
 
 ## Blockers
 
-**Architecture/governance (this pass):** cleared. Contract, architecture, database, API, decisions, and Cursor rules exist.
+**CUST-FOUNDATION-01:** IMPLEMENTED (typecheck, lint, tests). Not VERIFIED on a physical iPhone or production build.
 
 **Still true before Customer behaviour is production-correct:**
 
-1. No application repository skeleton yet — first code is CUST-FOUNDATION-01.
+1. Owner authentication and workspace bootstrap are not built (CUST-AUTH-01).
 2. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 3. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 4. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-None of items 2–4 block CUST-FOUNDATION-01 or CUST-AUTH-01.
-
-## Recommended first implementation step
-
-**CUST-FOUNDATION-01**, then **CUST-AUTH-01**.
-
-Do not start S19 UI or Customer CRUD first. Creating `customers` without verified owner identity would violate AUTHZ01.
+CUST-AUTH-01 is the next implementation slice. Do not start S19 UI or Customer CRUD first.

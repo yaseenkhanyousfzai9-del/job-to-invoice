@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Job to Invoice",
+    "slug": "job-to-invoice",
+    "scheme": "jobtoinvoice",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.jobtoinvoice.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

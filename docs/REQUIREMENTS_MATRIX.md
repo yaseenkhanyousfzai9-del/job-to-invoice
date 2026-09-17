@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. No application exists yet. AUTHZ01, CUS01, CUS02, S06, S07, and S19 are not implemented.
+Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01 runtime exists (`R-CUS-PRE-01` IMPLEMENTED, not VERIFIED). AUTHZ01, CUS01, CUS02, S06, S07, and S19 are not implemented.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -149,7 +149,7 @@ These are required for Customer to be production-correct. They are also PENDING.
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-PRE-01 | ARC01 ARC05 DEL01 | TypeScript monorepo with `apps/mobile`, `apps/api` Fastify, `packages/domain`; mobile does not write commercial rows via Supabase REST | n/a | API process | none | Boot/typecheck | PENDING |
+| R-CUS-PRE-01 | ARC01 ARC05 DEL01 | TypeScript monorepo with `apps/mobile`, `apps/api` Fastify, `packages/domain`; mobile does not write commercial rows via Supabase REST | n/a | API process | none | Boot/typecheck | IMPLEMENTED |
 | R-CUS-PRE-02 | ACC01 S02 S03 QA01 QA02 | Owner email OTP auth; generic responses; secure session | S02 S03 | Supabase Auth + `GET /me` | `signup_verified` when bootstrap exists | QA01 QA02 | PENDING |
 | R-CUS-PRE-03 | DEC04 POST /workspace | Exactly one workspace and active owner membership, created atomically | S04 minimum | `workspaces`, `memberships` | `onboarding_completed` later | Second workspace rejected | PENDING |
 | R-CUS-PRE-04 | AUTHZ01 ARC02 ARC03 | JWT verified; tenant context from membership; FORCE RLS | API kernel | private schema | none | Forged workspace_id ignored | PENDING |
