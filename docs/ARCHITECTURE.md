@@ -1,6 +1,6 @@
 # Architecture
 
-Status: CUST-AUTH-01 owner authentication kernel exists in code (JWT verification, GET /v1/me, POST /v1/workspace, S01–S04). Live Supabase OTP and applied production migrations are not VERIFIED. Customer commercial tables are not implemented.
+Status: CUST-AUTH-01 owner authentication kernel exists in code (JWT verification, GET /v1/me, POST /v1/workspace, S01–S04). SUPABASE-DEV-SETUP-01 pinned the CLI and API login-role migration; a hosted development project is **not** linked yet. Live OTP and applied hosted migrations are not VERIFIED. Customer commercial tables are not implemented.
 
 Authority: PRD section 19 (ARC01–ARC05), plus AUTHZ01, ACC01–ACC02, SYNC01–SYNC06, DEC01, DEC04, DEC10. SOP process applies; SOP default stack does not override this document.
 
@@ -123,8 +123,8 @@ QA03 is a release test: two owners requesting each other’s customer/job IDs le
 
 | Role | Use |
 |---|---|
-| Migration | Deployment-only. Applies schema. Unavailable to mobile and runtime API. |
-| API | Restricted DML under RLS. Not superuser, not table owner, not `BYPASSRLS`. |
+| Migration | Deployment-only. Applies schema. Unavailable to mobile and runtime API. `DATABASE_URL_MIGRATIONS`. |
+| API | `app_api_login` (inherits `app_api`). Restricted DML under RLS. Not superuser, not table owner, not `BYPASSRLS`. `DATABASE_URL_API`. |
 | Worker | Outbox claim + artifact/status updates through scoped functions. |
 | Auth (`anon` / `authenticated`) | Supabase Auth only. No commercial table access. |
 | Privileged purge | Account-deletion workflow only (DB05). Not used for ordinary Customer DELETE. |

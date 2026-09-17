@@ -16,7 +16,9 @@
     "dev:worker": "npm run dev -w @job-to-invoice/worker",
     "dev:portal": "npm run dev -w @job-to-invoice/portal",
     "dev:admin": "npm run dev -w @job-to-invoice/admin",
-    "dev:mobile": "npm run start -w @job-to-invoice/mobile"
+    "dev:mobile": "npm run start -w @job-to-invoice/mobile",
+    "supabase": "supabase",
+    "db:push:dev": "node scripts/db-push-development.mjs"
   },
   "engines": {
     "node": ">=20.19.0"
@@ -33,6 +35,7 @@
     "@types/react": "19.0.14",
     "@types/react-dom": "19.0.6",
     "eslint": "^9.35.0",
+    "supabase": "2.117.0",
     "tsx": "^4.20.5",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.44.0"

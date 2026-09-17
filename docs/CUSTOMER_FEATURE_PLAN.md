@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. Live Supabase OTP/Postgres apply is BLOCKED until a development project is configured. Customer persistence and UI are not implemented.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. SUPABASE-DEV-SETUP-01 scaffolding is IMPLEMENTED; live hosted development Auth/Postgres is BLOCKED until the account owner creates **Job to Invoice — Development**. Customer persistence and UI are not implemented.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -159,21 +159,22 @@ These are not the Customer feature, but Customer cannot be production-correct wi
 
 1. **CUST-FOUNDATION-01** — monorepo, Fastify, Expo app shell, domain package, tokens, CI
 2. **CUST-AUTH-01** — owner OTP, JWT, `GET /me`, `POST /workspace`, tenant context, RLS kernel
+3. **CUST-DOMAIN-01** — Customer field contracts
+4. **SUPABASE-DEV-SETUP-01** — development Auth/Postgres project (account-owner provisioning)
+5. **CUST-DB-01** — customers table (do not start until the development database exists)
 
-### Customer implementation
+### Customer implementation (after the development database exists)
 
-3. CUST-DOMAIN-01  
-4. CUST-DB-01  
-5. CUST-API-01 → CUST-UI-01  
-6. CUST-API-02 → CUST-UI-02  
-7. CUST-API-03 → CUST-UI-03  
-8. CUST-API-04 → CUST-UI-04  
-9. CUST-API-05 → CUST-UI-05  
-10. CUST-API-06 → CUST-UI-06  
-11. CUST-JOB-01  
-12. CUST-SYNC-01  
-13. CUST-SEC-01  
-14. CUST-QA-01  
+6. CUST-API-01 → CUST-UI-01  
+7. CUST-API-02 → CUST-UI-02  
+8. CUST-API-03 → CUST-UI-03  
+9. CUST-API-04 → CUST-UI-04  
+10. CUST-API-05 → CUST-UI-05  
+11. CUST-API-06 → CUST-UI-06  
+12. CUST-JOB-01  
+13. CUST-SYNC-01  
+14. CUST-SEC-01  
+15. CUST-QA-01  
 
 Do not start a UI slice on mocks. Do not implement Quote/Approval/Invoice inside these slices.
 
@@ -461,6 +462,35 @@ Status of this slice: **IMPLEMENTED**, not VERIFIED (no API/UI integration).
 
 ---
 
+## SUPABASE-DEV-SETUP-01
+
+Development Supabase / Postgres environment setup
+
+### PRD IDs
+
+OPS01, ACC01, ACC02, AUTHZ01, DB04, ARC02, ARC03, QA01, QA02
+
+### Purpose
+
+Establish a real **development** Auth + Postgres environment so later Customer migrations can be applied and RLS/JWT can be verified. No Customer tables.
+
+### Prerequisites
+
+CUST-AUTH-01, CUST-DOMAIN-01. Account-owner authorization to create a hosted development project.
+
+### Evidence (SUPABASE-DEV-SETUP-01)
+
+Recorded 2026-09-18:
+
+- Supabase CLI pinned at `2.117.0`
+- `supabase/config.toml` initialized (`project_id = job-to-invoice-development`)
+- `0002_app_api_login.sql` adds `app_api_login` without a committed password
+- Live hosted project, secrets, `db push`, OTP mailbox: **not present** — see `supabase/README.md`
+
+Status of this slice: **PARTIAL / BLOCKED** on account-owner project creation. CUST-DB-01 is **not READY**.
+
+---
+
 ## CUST-DB-01
 
 Customer database schema, indexes and tenant isolation
@@ -475,7 +505,7 @@ Create the `customers` table, indexes, RLS, and the minimum `jobs` reference so 
 
 ### Prerequisites
 
-CUST-AUTH-01 (workspaces/memberships exist), CUST-DOMAIN-01 (JSON address schema)
+CUST-AUTH-01 (workspaces/memberships exist), CUST-DOMAIN-01 (JSON address schema), SUPABASE-DEV-SETUP-01 (hosted development database applied). **Do not start this slice until the development project exists and 0001/0002 have been applied.**
 
 ### Files likely involved
 
@@ -1768,6 +1798,8 @@ See `docs/DECISIONS.md`.
 | DEC-CUST-006 | `GET /v1/jobs?customer_id=`; jobs stay on `jobs` |
 | DEC-CUST-007 | Master record only; apply-to-draft deferred to Quote |
 | DEC-CUST-008 | `normalized_email` = trim + case-fold local and domain; no Gmail dot/plus rewrite |
+| DEC-AUTH-003 | Hosted development project is account-owner created; `app_api_login` for `DATABASE_URL_API` |
+| DEC-AUTH-004 | OTP: 6 digits; set hosted expiry to 600s; 5-failure cap is not a hosted per-challenge setting |
 
 Non-critical assumptions (unchanged):
 
@@ -1788,12 +1820,15 @@ Non-critical assumptions (unchanged):
 
 **CUST-DOMAIN-01:** IMPLEMENTED (domain unit tests for VAL01/VAL02 create/update/list/archive contracts). Not VERIFIED via API/UI.
 
+**SUPABASE-DEV-SETUP-01:** PARTIAL. CLI, config.toml, login-role migration, and skippable security tests exist. BLOCKED: no hosted development project, no local secret file, no applied migrations, no OTP mailbox.
+
 **Still true before Customer behaviour is production-correct:**
 
-1. Live owner OTP against Supabase Auth (QA01/QA02) needs a development Auth project.
-2. CUST-DB-01 migration apply and RLS tests need that same development Postgres. Schema files can be written after review; verification is blocked until the database exists.
-3. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
-4. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
-5. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
+1. Account owner must create **Job to Invoice — Development** and complete `supabase/README.md`.
+2. Live owner OTP against that project (QA01/QA02) needs a fictional developer mailbox.
+3. CUST-DB-01 is not READY until 0001/0002 apply and RLS tests pass against `app_api_login`.
+4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
+5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
+6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-CUST-DB-01 is the next implementation slice after developer review, but applying/verifying it is blocked until development Supabase/Postgres is configured. Do not start Customer API/UI first.
+Do not start CUST-DB-01. Do not start Customer API/UI.

@@ -1,8 +1,14 @@
 ﻿node_modules/
 .env
 .env.*
+.env.development.local
+**/.env.development.local
 !.env.example
 !**/.env.example
+
+# Supabase CLI local state (never commit linked project tokens)
+supabase/.temp/
+supabase/.branches/
 
 .expo/
 .next/

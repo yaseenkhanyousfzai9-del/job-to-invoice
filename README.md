@@ -2,7 +2,7 @@
 
 iPhone-first operator app and customer approval website for solo service businesses.
 
-This repository is a TypeScript monorepo. Owner authentication and workspace bootstrap exist in code. **No customer, quote, invoice, approval, or billing features are implemented yet.** Live OTP requires a development Supabase Auth project that is not committed to git.
+This repository is a TypeScript monorepo. Owner authentication and workspace bootstrap exist in code. **No customer, quote, invoice, approval, or billing features are implemented yet.** Live OTP requires a development Supabase project; follow [`supabase/README.md`](supabase/README.md). The hosted development project is not created by this repository.
 
 ## Authority
 
@@ -58,7 +58,7 @@ npm run dev:mobile    # Expo dev server (development builds; Expo Go is not rele
 
 ## Environment
 
-Copy `.env.example` to `.env` for local names only. App-specific examples:
+Copy `.env.example` to `.env.development.local` (gitignored) for local names only. App-specific examples:
 
 - `apps/api/.env.example` — server secrets (never ship in mobile)
 - `apps/mobile/.env.example` — public `EXPO_PUBLIC_*` values only

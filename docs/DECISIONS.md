@@ -160,6 +160,36 @@ Date format: ISO date. Status values: ACCEPTED.
 
 ---
 
+## DEC-AUTH-003
+
+**ID:** DEC-AUTH-003  
+**Date:** 2026-09-18  
+**Question:** How is the development Supabase/Postgres environment created, and how does the runtime API connect?  
+**Decision:** The account owner creates a hosted project named **Job to Invoice — Development**. Agents do not auto-provision it (organization, database password, and billing are required). The repository pins Supabase CLI `2.117.0`. Schema apply uses `npx supabase db push` against the linked development project only (`npm run db:push:dev` refuses non-development `APP_ENV`). Runtime `DATABASE_URL_API` uses `app_api_login` (LOGIN, INHERIT, NOSUPERUSER, NOBYPASSRLS) which inherits `app_api`. The password is set with `ALTER ROLE` after apply and is never committed. `DATABASE_URL_MIGRATIONS` remains the migration role. JWT verification stays JWKS (`AUTH_ISSUER`, `AUTH_AUDIENCE=authenticated`, `AUTH_JWKS_URL`).  
+**PRD evidence:** OPS01 separate environments; ARC02 restricted API role; ACC02 JWKS; PRD configuration table `DATABASE_URL_API` vs `DATABASE_URL_MIGRATIONS`.  
+**Reason:** Creating a cloud project is an account-owner action. A NOLOGIN group role cannot be a connection string user.  
+**Requirements affected:** ACC01, ACC02, AUTHZ01, DB04, OPS01, SUPABASE-DEV-SETUP-01  
+**Reversible:** Yes for CLI patch versions; not for mixing development and production projects.  
+**Migration/API implication:** `0002_app_api_login.sql`. No Customer tables.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-004
+
+**ID:** DEC-AUTH-004  
+**Date:** 2026-09-18  
+**Question:** Which ACC01 OTP rules does hosted Supabase Auth actually configure?  
+**Decision:** Six-digit email OTP is the provider default (`otp_length = 6` in local `config.toml`). Set hosted **Email OTP expiration** to **600 seconds**; the hosted default is 3600 seconds and is not ACC01. Per-user resend cooldown defaults to about 60 seconds. **At most five verification failures per challenge is not a hosted per-challenge control.** Hosted `/auth/v1/verify` is IP rate-limited (documented 360/hour with burst). The mobile app keeps generic verify errors and a 60-second client cooldown. Do not add a second plaintext OTP table to count failures. Development email uses the project's development mailer, not production Resend.  
+**PRD evidence:** ACC01; QA02 generic errors and no account enumeration.  
+**Reason:** Documenting provider limits prevents pretending a dashboard setting exists.  
+**Requirements affected:** ACC01, QA01, QA02, SUPABASE-DEV-SETUP-01  
+**Reversible:** Yes if the provider later exposes a per-challenge failure cap.  
+**Migration/API implication:** Dashboard Auth setting only; no schema.  
+**Status:** ACCEPTED
+
+---
+
 ## DEC-CUST-008
 
 **ID:** DEC-CUST-008  

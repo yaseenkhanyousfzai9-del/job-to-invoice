@@ -1,6 +1,6 @@
 # Database
 
-Status: CUST-AUTH-01 migration `supabase/migrations/0001_auth_workspace.sql` exists (app_users, workspaces, memberships, job_allowances, idempotency_records, private schema `app`, FORCE RLS). It has not been applied to a live Supabase project in this slice. Customer tables are not in this migration.
+Status: CUST-AUTH-01 migration `supabase/migrations/0001_auth_workspace.sql` exists. `0002_app_api_login.sql` adds the runtime LOGIN role `app_api_login` without a committed password. Neither migration has been applied to a hosted development database in this slice (no development project is linked). Customer tables are not in these migrations.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 
@@ -24,7 +24,7 @@ Private schema: `app` (not `public`). Client GRANTs revoked. `FORCE ROW LEVEL SE
 
 ## Roles and RLS
 
-See `docs/ARCHITECTURE.md`. Policies: API role may `SELECT/INSERT/UPDATE/DELETE` only when `workspace_id` equals the transaction-local workspace setting. Anon/authenticated roles: no access. Authorization tests must run as the API role, not as a superuser (DB04).
+See `docs/ARCHITECTURE.md` and `supabase/README.md`. Policies: API role may `SELECT/INSERT/UPDATE/DELETE` only when `workspace_id` equals the transaction-local workspace setting. Anon/authenticated roles: no access. Authorization tests must run as `app_api_login`, not as a superuser (DB04). Set the `app_api_login` password out of band after `0002` applies.
 
 ---
 
