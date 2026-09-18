@@ -9,6 +9,8 @@ Current migrations:
 
 Customer, job, quote, and invoice tables are **not** created here.
 
+Approved hosted development project: **Job to Invoice - Development US**, region `us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`. The Tokyo `ap-northeast-1` project is DO NOT USE. Do not link it. Do not apply migrations to it.
+
 CLI: `supabase@2.117.0` (repository `devDependency`). Run `npx supabase` so the pinned version is used.
 
 ## What this slice cannot do automatically

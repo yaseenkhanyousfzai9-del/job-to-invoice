@@ -1,6 +1,6 @@
 # Database
 
-Status: CUST-AUTH-01 migration `supabase/migrations/0001_auth_workspace.sql` exists. `0002_app_api_login.sql` adds the runtime LOGIN role `app_api_login` without a committed password. Neither migration has been applied to a hosted development database in this slice (no development project is linked). Customer tables are not in these migrations.
+Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. `0001_auth_workspace.sql` and `0002_app_api_login.sql` are applied. `app_api_login` exists (LOGIN, not superuser, not BYPASSRLS) with no committed password. Customer tables are not in these migrations. The Tokyo project is DO NOT USE.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 

@@ -170,7 +170,7 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reason:** Creating a cloud project is an account-owner action. A NOLOGIN group role cannot be a connection string user.  
 **Requirements affected:** ACC01, ACC02, AUTHZ01, DB04, OPS01, SUPABASE-DEV-SETUP-01  
 **Reversible:** Yes for CLI patch versions; not for mixing development and production projects.  
-**Migration/API implication:** `0002_app_api_login.sql`. No Customer tables.  
+**Migration/API implication:** `0002_app_api_login.sql`. Hosted migration role cannot `ALTER ROLE ... NOSUPERUSER` after create; attributes are set only in `CREATE ROLE`. Password remains out of band. No Customer tables.  
 **Status:** ACCEPTED
 
 ---

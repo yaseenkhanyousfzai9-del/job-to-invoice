@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. SUPABASE-DEV-SETUP-01 scaffolding is IMPLEMENTED; live hosted development Auth/Postgres is BLOCKED until the account owner creates **Job to Invoice — Development**. Customer persistence and UI are not implemented.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. SUPABASE-DEV-LINK-02 linked **Job to Invoice - Development US** (`us-east-1`) and applied 0001/0002. Runtime API role password and live OTP remain unverified. Customer persistence and UI are not implemented.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -487,7 +487,28 @@ Recorded 2026-09-18:
 - `0002_app_api_login.sql` adds `app_api_login` without a committed password
 - Live hosted project, secrets, `db push`, OTP mailbox: **not present** — see `supabase/README.md`
 
-Status of this slice: **PARTIAL / BLOCKED** on account-owner project creation. CUST-DB-01 is **not READY**.
+Status of this slice: **IMPLEMENTED** for CLI/config. Hosted apply completed in SUPABASE-DEV-LINK-02.
+
+---
+
+## SUPABASE-DEV-LINK-02
+
+Link approved US development project and apply 0001/0002
+
+### Evidence (SUPABASE-DEV-LINK-02)
+
+Recorded 2026-09-18:
+
+- Linked **Job to Invoice - Development US**, ref `vlpjaamdjtmtqtpwbhzq`, region `us-east-1`
+- Tokyo project (`ap-northeast-1`) remains unlinked / DO NOT USE
+- Remote history: `0001` and `0002`
+- Tables present: `app_users`, `workspaces`, `memberships`, `job_allowances`, `idempotency_records` (FORCE RLS)
+- Roles: `app_api` (NOLOGIN, no BYPASSRLS), `app_api_login` (LOGIN, no superuser, no BYPASSRLS)
+- Hosted `ALTER ROLE ... NOSUPERUSER` is not permitted; 0002 sets attributes only in `CREATE ROLE`
+- `app_api_login` password and `DATABASE_URL_API` not set (SUPABASE-DEV-RUNTIME-ROLE-03)
+- No Customer tables
+
+Status of this slice: **IMPLEMENTED**, not VERIFIED for live OTP or runtime API RLS tests.
 
 ---
 
@@ -1816,17 +1837,17 @@ Non-critical assumptions (unchanged):
 
 **CUST-FOUNDATION-01:** IMPLEMENTED (typecheck, lint, tests). Not VERIFIED on a physical iPhone or production build.
 
-**CUST-AUTH-01:** IMPLEMENTED (API tests, domain tests, mobile OTP-error tests, Expo config). Not VERIFIED: no development Supabase project, no live OTP mailbox, migration not applied to a hosted database.
+**CUST-AUTH-01:** IMPLEMENTED. Hosted 0001 applied on the US development project. Live OTP mailbox still unverified.
 
 **CUST-DOMAIN-01:** IMPLEMENTED (domain unit tests for VAL01/VAL02 create/update/list/archive contracts). Not VERIFIED via API/UI.
 
-**SUPABASE-DEV-SETUP-01:** PARTIAL. CLI, config.toml, login-role migration, and skippable security tests exist. BLOCKED: no hosted development project, no local secret file, no applied migrations, no OTP mailbox.
+**SUPABASE-DEV-SETUP-01 / LINK-02:** IMPLEMENTED. US `us-east-1` project linked; 0001/0002 applied. Tokyo project is DO NOT USE.
 
 **Still true before Customer behaviour is production-correct:**
 
-1. Account owner must create **Job to Invoice — Development** and complete `supabase/README.md`.
-2. Live owner OTP against that project (QA01/QA02) needs a fictional developer mailbox.
-3. CUST-DB-01 is not READY until 0001/0002 apply and RLS tests pass against `app_api_login`.
+1. Set `app_api_login` password out of band and `DATABASE_URL_API` (SUPABASE-DEV-RUNTIME-ROLE-03). Do not use the postgres owner URI.
+2. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
+3. CUST-DB-01 is not READY until runtime-role RLS tests pass against `app_api_login`.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.

@@ -1,7 +1,9 @@
 -- SUPABASE-DEV-SETUP-01: login role for DATABASE_URL_API.
 -- app_api remains NOLOGIN (privilege group). app_api_login is the runtime connection role.
 -- Do not store the runtime password in this file.
--- After apply, as the migration role, set a unique development password:
+-- Hosted Supabase's migration role is not a full superuser and cannot ALTER ROLE
+-- attributes after create (SQLSTATE 42501). Set LOGIN / NOSUPERUSER / NOBYPASSRLS
+-- only in CREATE ROLE. Password is set later, out of band:
 --   ALTER ROLE app_api_login WITH PASSWORD '<development-only secret>';
 -- Then point DATABASE_URL_API at app_api_login, never at postgres / superuser / BYPASSRLS.
 
@@ -18,8 +20,6 @@ begin
   end if;
 end
 $$;
-
-alter role app_api_login with nosuperuser nocreatedb nocreaterole nobypassrls login inherit;
 
 grant app_api to app_api_login;
 grant usage on schema app to app_api_login;
