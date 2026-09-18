@@ -1,6 +1,6 @@
 # Database
 
-Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. `0001_auth_workspace.sql` and `0002_app_api_login.sql` are applied. `app_api_login` exists (LOGIN, not superuser, not BYPASSRLS) with no committed password. Customer tables are not in these migrations. The Tokyo project is DO NOT USE.
+Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. `0001_auth_workspace.sql` and `0002_app_api_login.sql` are applied. Runtime `DATABASE_URL_API` uses session pooler as `app_api_login` (not superuser, not BYPASSRLS, member of `app_api`). Live `dev-db.security.test.ts` against that connection verified FORCE RLS, no-context denial, own-workspace access, cross-tenant denial, transaction-local `set_config(..., true)`, and pooled GUC non-leak. Passwords and URIs stay out of git. Customer tables are not in these migrations. The Tokyo project is DO NOT USE.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 
@@ -24,7 +24,7 @@ Private schema: `app` (not `public`). Client GRANTs revoked. `FORCE ROW LEVEL SE
 
 ## Roles and RLS
 
-See `docs/ARCHITECTURE.md` and `supabase/README.md`. Policies: API role may `SELECT/INSERT/UPDATE/DELETE` only when `workspace_id` equals the transaction-local workspace setting. Anon/authenticated roles: no access. Authorization tests must run as `app_api_login`, not as a superuser (DB04). Set the `app_api_login` password out of band after `0002` applies.
+See `docs/ARCHITECTURE.md` and `supabase/README.md`. Policies: API role may `SELECT/INSERT/UPDATE/DELETE` only when `workspace_id` equals the transaction-local workspace setting. Anon/authenticated roles: no access. Authorization tests must run as `app_api_login`, not as a superuser (DB04). `app_api_login` password is set out of band; runtime tenant GUCs use `set_config(..., is_local := true)` in `apps/api/src/store/postgres.ts`.
 
 ---
 

@@ -505,16 +505,41 @@ Recorded 2026-09-18:
 - Tables present: `app_users`, `workspaces`, `memberships`, `job_allowances`, `idempotency_records` (FORCE RLS)
 - Roles: `app_api` (NOLOGIN, no BYPASSRLS), `app_api_login` (LOGIN, no superuser, no BYPASSRLS)
 - Hosted `ALTER ROLE ... NOSUPERUSER` is not permitted; 0002 sets attributes only in `CREATE ROLE`
-- `app_api_login` password and `DATABASE_URL_API` not set (SUPABASE-DEV-RUNTIME-ROLE-03)
+- Runtime password + `DATABASE_URL_API` completed in SUPABASE-DEV-RUNTIME-ROLE-03
 - No Customer tables
 
-Status of this slice: **IMPLEMENTED**, not VERIFIED for live OTP or runtime API RLS tests.
+Status of this slice: **IMPLEMENTED**. Runtime RLS verification is SUPABASE-DEV-RUNTIME-ROLE-03.
+
+---
+
+## SUPABASE-DEV-RUNTIME-ROLE-03
+
+Verify restricted runtime database connection and live RLS
+
+### Evidence (SUPABASE-DEV-RUNTIME-ROLE-03)
+
+Recorded 2026-09-18:
+
+- `DATABASE_URL_API` points at session pooler (`aws-0-us-east-1.pooler.supabase.com:5432`) as `app_api_login.vlpjaamdjtmtqtpwbhzq` with `sslmode=require` (URI not committed)
+- Live `current_user = app_api_login`; `rolsuper = false`; `rolbypassrls = false`; member of `app_api`
+- Negative privilege checks: cannot `SET ROLE postgres`, alter self to superuser/BYPASSRLS, create superuser, or disable FORCE RLS
+- FORCE RLS on `app_users`, `workspaces`, `memberships`, `job_allowances`, `idempotency_records`
+- No-context reads return zero tenant rows
+- Fictional two-workspace fixtures: own memberships visible; foreign workspace inaccessible
+- Tenant GUCs use `set_config(..., true)`; values do not survive transaction end or pooled reuse
+- JWKS reachable; malformed bearer → 401
+- Live OTP mailbox (QA01/QA02) still unverified
+- No Customer tables
+
+Status of this slice: **VERIFIED** for runtime role / RLS / JWKS (OTP excluded).
 
 ---
 
 ## CUST-DB-01
 
 Customer database schema, indexes and tenant isolation
+
+**Status: READY** (do not start until explicitly authorized)
 
 ### PRD IDs
 
@@ -526,7 +551,7 @@ Create the `customers` table, indexes, RLS, and the minimum `jobs` reference so 
 
 ### Prerequisites
 
-CUST-AUTH-01 (workspaces/memberships exist), CUST-DOMAIN-01 (JSON address schema), SUPABASE-DEV-SETUP-01 (hosted development database applied). **Do not start this slice until the development project exists and 0001/0002 have been applied.**
+CUST-AUTH-01 (workspaces/memberships exist), CUST-DOMAIN-01 (JSON address schema), SUPABASE-DEV-SETUP-01 / LINK-02 / RUNTIME-ROLE-03 (hosted development database applied; `app_api_login` RLS verified).
 
 ### Files likely involved
 
@@ -1841,15 +1866,14 @@ Non-critical assumptions (unchanged):
 
 **CUST-DOMAIN-01:** IMPLEMENTED (domain unit tests for VAL01/VAL02 create/update/list/archive contracts). Not VERIFIED via API/UI.
 
-**SUPABASE-DEV-SETUP-01 / LINK-02:** IMPLEMENTED. US `us-east-1` project linked; 0001/0002 applied. Tokyo project is DO NOT USE.
+**SUPABASE-DEV-SETUP-01 / LINK-02 / RUNTIME-ROLE-03:** IMPLEMENTED/VERIFIED for US `us-east-1` project, applied 0001/0002, and live `app_api_login` RLS/JWKS. Tokyo project is DO NOT USE. Live OTP mailbox still unverified.
 
 **Still true before Customer behaviour is production-correct:**
 
-1. Set `app_api_login` password out of band and `DATABASE_URL_API` (SUPABASE-DEV-RUNTIME-ROLE-03). Do not use the postgres owner URI.
-2. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-3. CUST-DB-01 is not READY until runtime-role RLS tests pass against `app_api_login`.
-4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
-5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
-6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
+1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
+2. CUST-DB-01 is **READY** but not started — await explicit authorization.
+3. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
+4. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
+5. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-DB-01. Do not start Customer API/UI.
+Do not start CUST-DB-01 until authorized. Do not start Customer API/UI.

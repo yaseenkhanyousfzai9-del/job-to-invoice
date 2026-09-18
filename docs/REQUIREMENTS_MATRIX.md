@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-LINK-02 linked the `us-east-1` development project and applied 0001/0002 (IMPLEMENTED, not VERIFIED for live OTP/runtime API role). AUTHZ01 is implemented for owner identity/workspace only. CUS01, CUS02, S06, S07, and S19 are not implemented.
+Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project (FORCE RLS, tenant GUC isolation, JWKS reachability). Live owner OTP (QA01/QA02) remains unverified. AUTHZ01 has infrastructure evidence for auth/workspace tables only — Customer AUTHZ rows stay PENDING. CUS01, CUS02, S06, S07, and S19 are not implemented.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -152,9 +152,9 @@ These are required for Customer to be production-correct. They are not a complet
 | R-CUS-PRE-01 | ARC01 ARC05 DEL01 | TypeScript monorepo with `apps/mobile`, `apps/api` Fastify, `packages/domain`; mobile does not write commercial rows via Supabase REST | n/a | API process | none | Boot/typecheck | IMPLEMENTED |
 | R-CUS-PRE-02 | ACC01 S02 S03 QA01 QA02 | Owner email OTP auth; generic responses; secure session | S02 S03 | Supabase Auth + `GET /me` | `signup_verified` when bootstrap exists | QA01 QA02 | IMPLEMENTED |
 | R-CUS-PRE-03 | DEC04 POST /workspace | Exactly one workspace and active owner membership, created atomically | S04 minimum | `workspaces`, `memberships` | `onboarding_completed` later | Second workspace rejected | IMPLEMENTED |
-| R-CUS-PRE-04 | AUTHZ01 ARC02 ARC03 | JWT verified; tenant context from membership; FORCE RLS | API kernel | private schema | none | Forged workspace_id ignored | IMPLEMENTED |
+| R-CUS-PRE-04 | AUTHZ01 ARC02 ARC03 | JWT verified; tenant context from membership; FORCE RLS | API kernel | private schema | none | Live FORCE RLS + tx-local GUC + forged workspace_id ignored (auth/workspace only) | IMPLEMENTED |
 | R-CUS-PRE-05 | POST /jobs DB02 jobs | Minimum jobs table and create/list so Customer picker, associated jobs, and referenced-delete are real | S06, S19 | `jobs.customer_id` | `job_created` | FK + picker bind | PENDING |
-| R-CUS-PRE-06 | OPS01 ACC01 ACC02 DB04 DEC-AUTH-003 | Hosted development Supabase project; CLI 2.117.0; applied 0001/0002; `app_api_login`; live JWKS/OTP | n/a | development project only | none | `dev-db.security.test.ts` against development URLs | IMPLEMENTED |
+| R-CUS-PRE-06 | OPS01 ACC01 ACC02 DB04 DEC-AUTH-003 | Hosted development Supabase project; CLI 2.117.0; applied 0001/0002; `app_api_login`; live JWKS/OTP | n/a | development project only | none | Live `dev-db.security.test.ts` (role/RLS/GUC/JWKS); OTP mailbox still unverified | VERIFIED |
 
 ---
 
@@ -169,6 +169,7 @@ See `docs/CUSTOMER_FEATURE_PLAN.md`.
 | CUST-DOMAIN-01 | R-CUS-01, R-CUS-02, R-CUS-22–R-CUS-28 |
 | SUPABASE-DEV-SETUP-01 | R-CUS-PRE-06 |
 | SUPABASE-DEV-LINK-02 | R-CUS-PRE-06 |
+| SUPABASE-DEV-RUNTIME-ROLE-03 | R-CUS-PRE-06, R-CUS-PRE-04 (infra) |
 | CUST-DB-01 | R-CUS-29–R-CUS-34, R-CUS-PRE-05 (table) |
 | CUST-API-01 | R-CUS-37, R-CUS-01, R-CUS-02, R-CUS-41, R-CUS-42 |
 | CUST-UI-01 | R-CUS-14, R-CUS-15, R-CUS-22–R-CUS-26 |
