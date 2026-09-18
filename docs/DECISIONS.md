@@ -172,6 +172,7 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** Yes for CLI patch versions; not for mixing development and production projects.  
 **Migration/API implication:** `0002_app_api_login.sql`. Hosted migration role cannot `ALTER ROLE ... NOSUPERUSER` after create; attributes are set only in `CREATE ROLE`. Password remains out of band. No Customer tables.  
 **Evidence (SUPABASE-DEV-RUNTIME-ROLE-03, 2026-09-18):** Live `DATABASE_URL_API` session-pooler connection as `app_api_login` on `vlpjaamdjtmtqtpwbhzq`; `dev-db.security.test.ts` passed (no superuser/BYPASSRLS, FORCE RLS, no-context denial, own/cross-tenant membership isolation, transaction-local GUC, pooled non-leak, JWKS). OTP mailbox still unverified.  
+**Evidence (CUST-DB-01, 2026-09-18):** `0003_customers.sql` applied; `customers.security.test.ts` passed under `app_api_login`. Jobs FK intentionally deferred to a later slice.  
 **Status:** ACCEPTED
 
 ---

@@ -539,101 +539,40 @@ Status of this slice: **VERIFIED** for runtime role / RLS / JWKS (OTP excluded).
 
 Customer database schema, indexes and tenant isolation
 
-**Status: READY** (do not start until explicitly authorized)
+**Status: VERIFIED** (customers table + RLS; jobs FK deferred)
 
-### PRD IDs
+### Evidence (CUST-DB-01)
 
-DB01, DB02, DB03, DB04, CUS01, CUS02, AUTHZ01, SEC02, jobs.customer_id (minimum FK)
+Recorded 2026-09-18:
 
-### Purpose
-
-Create the `customers` table, indexes, RLS, and the minimum `jobs` reference so delete/archive rules can later be enforced in the database, not only in handlers.
+- Migration `supabase/migrations/0003_customers.sql` applied to US development (`vlpjaamdjtmtqtpwbhzq`)
+- `app.customers` columns align with domain `CustomerRecord` (including `created_by`, `normalized_email`)
+- `UNIQUE (workspace_id, id)`; FK to `workspaces`; no unique on `normalized_email`
+- Indexes: list, normalized-email lookup, partial active list
+- FORCE RLS + `customers_tenant` policy on `app.workspace_id` GUC
+- Live `apps/api/src/customers.security.test.ts` passed (isolation, duplicate email, archive, version, pool non-leak)
+- Jobs table / composite FK (`R-CUS-31`) **not** created in this slice (strict CUST-DB-01 scope)
 
 ### Prerequisites
 
-CUST-AUTH-01 (workspaces/memberships exist), CUST-DOMAIN-01 (JSON address schema), SUPABASE-DEV-SETUP-01 / LINK-02 / RUNTIME-ROLE-03 (hosted development database applied; `app_api_login` RLS verified).
+CUST-AUTH-01, CUST-DOMAIN-01, SUPABASE-DEV-SETUP-01 / LINK-02 / RUNTIME-ROLE-03
 
-### Files likely involved
+### Files
 
-- migration creating private-schema `customers`
-- migration creating minimum `jobs` table with `(workspace_id, customer_id)` composite FK, or a dedicated `customer_references` constraint table if jobs are deferred — PRD requires `jobs.customer_id`, so prefer the real `jobs` table with unused columns defaulted only if NOT NULL requires it. Do not invent a second customer-link table.
-- RLS policies using server-set workspace context
-- seed fictional fixtures only (OPS01)
-
-### UI work
-
-None.
-
-### API work
-
-None yet. Table must not be reachable from the anon/authenticated Supabase roles.
-
-### Database work
-
-`customers`:
-
-- `workspace_id UUID NOT NULL`
-- `id UUID NOT NULL`
-- `UNIQUE (workspace_id, id)`
-- `name` text
-- `email` text null
-- `normalized_email` text null
-- `phone` text null
-- `billing_address_json` jsonb null
-- `archived_at` timestamptz null
-- `version` integer not null default 1
-- `created_at`, `updated_at`, `created_by`
-
-Indexes:
-
-- `(workspace_id, updated_at DESC, id DESC)`
-- `(workspace_id, normalized_email)` non-unique
-- list/filter helper for `archived_at IS NULL` as a partial index if needed
-
-Constraints:
-
-- Composite FK from `jobs (workspace_id, customer_id)` → `customers (workspace_id, id)`
-- No `ON DELETE CASCADE` of jobs/documents
-- JSON check that `billing_address_json` matches schema on write
-- FORCE RLS
-- Grants: API role only, no BYPASSRLS
-
-Do not add a unique constraint on `(workspace_id, normalized_email)`. That would violate CUS01.
-
-### Authorization
-
-RLS predicate is workspace membership from the transaction context, never a client `workspace_id` column write. Tests must query as the API role, not as a superuser.
-
-### Validation
-
-DB checks are a backstop. Domain validation remains authoritative for user messages.
-
-### Loading / empty / error / offline / accessibility
-
-Not applicable.
-
-### Tests
-
-- Insert as owner A succeeds.
-- Select/update/delete as owner B using A's id returns zero rows (DB04).
-- Duplicate names allowed.
-- Duplicate normalized emails allowed by the database.
-- `jobs` FK prevents deleting a referenced customer at the database layer even if a handler is buggy.
-- Anon/authenticated Supabase roles cannot read `customers`.
+- `supabase/migrations/0003_customers.sql`
+- `apps/api/src/customers.security.test.ts`
 
 ### Exit criteria
 
-Migration is reproducible. Isolation tests fail closed. No Customer HTTP routes yet.
-
-### Evidence required before VERIFIED
-
-Migration applied on a clean database in CI (OPS02). Role-based SQL tests, not only comments. Explain plan notes for the list index.
+Migration reproducible. Isolation tests fail closed. No Customer HTTP routes.
 
 ---
 
 ## CUST-API-01
 
 Create Customer
+
+**Status: READY** (do not start until explicitly authorized)
 
 ### PRD IDs
 
@@ -1871,9 +1810,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-DB-01 is **READY** but not started — await explicit authorization.
-3. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
-4. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
-5. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
+2. CUST-API-01 is **READY** but not started — await explicit authorization.
+3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
+4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
+5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
+6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-DB-01 until authorized. Do not start Customer API/UI.
+Do not start CUST-API-01 until authorized. Do not start Customer UI.

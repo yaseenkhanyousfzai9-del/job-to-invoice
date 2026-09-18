@@ -1,6 +1,6 @@
 # Database
 
-Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. `0001_auth_workspace.sql` and `0002_app_api_login.sql` are applied. Runtime `DATABASE_URL_API` uses session pooler as `app_api_login` (not superuser, not BYPASSRLS, member of `app_api`). Live `dev-db.security.test.ts` against that connection verified FORCE RLS, no-context denial, own-workspace access, cross-tenant denial, transaction-local `set_config(..., true)`, and pooled GUC non-leak. Passwords and URIs stay out of git. Customer tables are not in these migrations. The Tokyo project is DO NOT USE.
+Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. Migrations `0001`–`0003` applied. `app.customers` exists with FORCE RLS, non-unique `(workspace_id, normalized_email)` index, and live `customers.security.test.ts` evidence under `app_api_login`. Runtime `DATABASE_URL_API` uses session pooler as `app_api_login` (not superuser, not BYPASSRLS). Jobs / Customer HTTP routes are not in these migrations. The Tokyo project is DO NOT USE.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 
@@ -213,11 +213,7 @@ Customer commands must not increment these counters.
 
 **Immutable.** `id`, `workspace_id`, `created_at` (ordinary CRUD). Published document copies of this data live elsewhere (see snapshot section).
 
-**RLS.** API role, GUC = `workspace_id`. Cross-tenant SELECT returns zero rows → HTTP 404.
-
-**Delete detection.** `DELETE` is allowed only when no `jobs` row exists with the same `(workspace_id, customer_id)`. Prefer a pre-check that returns 409 `CUSTOMER_REFERENCED` rather than leaking a raw FK violation. The composite FK `jobs(workspace_id, customer_id) → customers(workspace_id, id)` is the database backstop (`ON DELETE RESTRICT` / no cascade).
-
-When `document_drafts` / `documents` exist later, they also count as references if they still point at the customer id. Customer v1 launch uses `jobs` as the reference table.
+**Evidence (CUST-DB-01, 2026-09-18):** Migration `0003_customers.sql` applied to `vlpjaamdjtmtqtpwbhzq`. Live schema: columns + `UNIQUE(workspace_id,id)` + `created_by` + checks (name 1–120 trimmed, email ≤254, email/normalized pair, phone ≤20, version ≥1). Indexes: list `(workspace_id, updated_at DESC, id DESC)`, non-unique `(workspace_id, normalized_email)`, partial active list. Policy `customers_tenant` uses `app.workspace_id` GUC. `customers.security.test.ts` covers no-context, own/cross insert/select/update/delete, workspace reassignment blocked, duplicate normalized email allowed, archive persistence, version default, pooled non-leak. Jobs FK (`R-CUS-31`) deferred — not created in this slice.
 
 ---
 

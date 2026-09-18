@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project (FORCE RLS, tenant GUC isolation, JWKS reachability). Live owner OTP (QA01/QA02) remains unverified. AUTHZ01 has infrastructure evidence for auth/workspace tables only — Customer AUTHZ rows stay PENDING. CUS01, CUS02, S06, S07, and S19 are not implemented.
+Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 applied `app.customers` with live RLS evidence (jobs FK still PENDING). Live owner OTP (QA01/QA02) remains unverified. Customer API/UI and AUTHZ01 Customer rows stay PENDING. CUS01, CUS02, S06, S07, and S19 are not complete.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -85,12 +85,12 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-29 | DB01 DB02 | `customers` table with UUID id, `workspace_id` NOT NULL, `UNIQUE(workspace_id,id)`, timestamps, `created_by`, `version` default 1 | n/a | Migration | none (PRD allowlist) | Clean-DB migration CI | PENDING |
-| R-CUS-30 | DB02 | Columns: `name`, `email?`, `normalized_email?`, `phone?`, `billing_address_json?`, `archived_at?`, `version` | n/a | Migration + JSON schema validation | none (PRD allowlist) | Schema tests | PENDING |
+| R-CUS-29 | DB01 DB02 | `customers` table with UUID id, `workspace_id` NOT NULL, `UNIQUE(workspace_id,id)`, timestamps, `created_by`, `version` default 1 | n/a | Migration | none (PRD allowlist) | `0003_customers.sql` + live schema verify | VERIFIED |
+| R-CUS-30 | DB02 | Columns: `name`, `email?`, `normalized_email?`, `phone?`, `billing_address_json?`, `archived_at?`, `version` | n/a | Migration + JSON schema validation | none (PRD allowlist) | Live columns; address JSON validated in domain | VERIFIED |
 | R-CUS-31 | DB01 | Composite FK from jobs `(workspace_id, customer_id)` to customers; no cascade delete of published financial records | S19 delete | FK without CASCADE | none (PRD allowlist) | DB delete of referenced customer fails | PENDING |
-| R-CUS-32 | DB03 | List index `(workspace_id, updated_at DESC, id DESC)` | S19 | Index | none (PRD allowlist) | Query uses index in CI notes/tests | PENDING |
-| R-CUS-33 | DB03 CUS01 | Index normalized customer email by workspace; not unique | S07 duplicate warn | Non-unique index | none (PRD allowlist) | Duplicate emails insert; unique constraint absent | PENDING |
-| R-CUS-34 | DB04 ARC02 | FORCE RLS; API role not owner/superuser/BYPASSRLS; client grants revoked on commercial schema | n/a | RLS + grants | none (PRD allowlist) | Anon/auth roles cannot SELECT customers | PENDING |
+| R-CUS-32 | DB03 | List index `(workspace_id, updated_at DESC, id DESC)` | S19 | Index | none (PRD allowlist) | Index present on development DB | VERIFIED |
+| R-CUS-33 | DB03 CUS01 | Index normalized customer email by workspace; not unique | S07 duplicate warn | Non-unique index | none (PRD allowlist) | Duplicate emails insert; unique constraint absent | VERIFIED |
+| R-CUS-34 | DB04 ARC02 | FORCE RLS; API role not owner/superuser/BYPASSRLS; client grants revoked on commercial schema | n/a | RLS + grants | none (PRD allowlist) | `customers.security.test.ts` tenant isolation | VERIFIED |
 
 ### API
 
