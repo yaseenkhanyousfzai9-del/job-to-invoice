@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import type { JwtVerifier } from "./auth/jwt.ts";
 import { registerOwnerAuth } from "./auth/plugin.ts";
 import { registerErrorHandler } from "./errors.ts";
+import { registerCustomersRoute } from "./routes/customers.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerWorkspaceRoute } from "./routes/workspace.ts";
@@ -47,5 +48,6 @@ export async function buildApp(deps: AppDependencies) {
   await registerHealthRoute(app);
   await registerMeRoute(app);
   await registerWorkspaceRoute(app, deps);
+  await registerCustomersRoute(app, deps);
   return app;
 }

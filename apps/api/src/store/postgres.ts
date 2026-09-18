@@ -1,8 +1,22 @@
 import { conflict } from "@job-to-invoice/domain";
+import type {
+  AccountStatus,
+  Customer,
+  DuplicateCustomerMatch,
+  UsAddress,
+  WorkspaceTrade,
+} from "@job-to-invoice/domain";
 import postgres from "postgres";
-import type { AuthStore, OwnerTx, AppUserRecord, WorkspaceBundle, IdempotencyRecord, WorkspaceRecord, MembershipRecord, AllowanceRecord } from "./types.ts";
-import type { AccountStatus } from "@job-to-invoice/domain";
-import type { UsAddress, WorkspaceTrade } from "@job-to-invoice/domain";
+import type {
+  AllowanceRecord,
+  AppUserRecord,
+  AuthStore,
+  IdempotencyRecord,
+  MembershipRecord,
+  OwnerTx,
+  WorkspaceBundle,
+  WorkspaceRecord,
+} from "./types.ts";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -174,6 +188,65 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               throw error;
             }
           },
+          async findCustomersByNormalizedEmail(workspaceId, normalizedEmail) {
+            const rows = await tx<{ id: string; name: string }[]>`
+              select id, name
+              from app.customers
+              where workspace_id = ${workspaceId}::uuid
+                and normalized_email = ${normalizedEmail}
+              order by created_at asc, id asc
+            `;
+            return rows.map(
+              (row): DuplicateCustomerMatch => ({
+                id: row.id,
+                name: row.name,
+              }),
+            );
+          },
+          async createCustomer(input) {
+            const customerId = crypto.randomUUID();
+            const rows = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              insert into app.customers (
+                id, workspace_id, name, email, normalized_email, phone,
+                billing_address_json, archived_at, version, created_at, updated_at, created_by
+              ) values (
+                ${customerId}::uuid, ${input.workspaceId}::uuid, ${input.fields.name},
+                ${input.fields.email}, ${input.fields.normalized_email}, ${input.fields.phone},
+                ${input.fields.billing_address === null ? null : tx.json(input.fields.billing_address)},
+                null, 1, ${input.now}::timestamptz, ${input.now}::timestamptz, ${input.createdBy}::uuid
+              )
+              returning id, name, email, phone, billing_address_json as billing_address,
+                        archived_at, version, created_at, updated_at
+            `;
+            const row = rows[0];
+            if (!row) {
+              throw new Error("customer create failed");
+            }
+            const customer: Customer = {
+              id: row.id,
+              name: row.name,
+              email: row.email,
+              phone: row.phone,
+              billing_address: row.billing_address,
+              archived_at: row.archived_at,
+              version: row.version,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+            };
+            return customer;
+          },
           async getIdempotency(actorScope, key) {
             const rows = await tx<IdempotencyRecord[]>`
               select actor_scope, key, route, request_hash, status_code, response_json
@@ -199,6 +272,9 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
         return fn(ownerTx);
       });
       return result as T;
+    },
+    async close() {
+      await sql.end({ timeout: 5 });
     },
   };
 }

@@ -1,8 +1,10 @@
 import { conflict } from "@job-to-invoice/domain";
+import type { Customer } from "@job-to-invoice/domain";
 import type {
   AllowanceRecord,
   AppUserRecord,
   AuthStore,
+  CustomerRow,
   IdempotencyRecord,
   MembershipRecord,
   OwnerTx,
@@ -14,12 +16,15 @@ type MemoryState = {
   usersByAuthId: Map<string, AppUserRecord>;
   usersById: Map<string, AppUserRecord>;
   bundlesByOwner: Map<string, WorkspaceBundle>;
+  customersByWorkspace: Map<string, CustomerRow[]>;
   idempotency: Map<string, IdempotencyRecord>;
 };
 
 export type MemoryAuthHarness = {
   store: AuthStore;
   setUserStatus(authUserId: string, status: AppUserRecord["status"]): void;
+  setCustomerArchived(workspaceId: string, customerId: string, archivedAt: string): void;
+  listCustomerRows(workspaceId: string): CustomerRow[];
 };
 
 function cloneBundle(bundle: WorkspaceBundle): WorkspaceBundle {
@@ -30,11 +35,26 @@ function cloneBundle(bundle: WorkspaceBundle): WorkspaceBundle {
   };
 }
 
+function toCustomer(row: CustomerRow): Customer {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    billing_address: row.billing_address,
+    archived_at: row.archived_at,
+    version: row.version,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 export function createMemoryAuthStore(): MemoryAuthHarness {
   const state: MemoryState = {
     usersByAuthId: new Map(),
     usersById: new Map(),
     bundlesByOwner: new Map(),
+    customersByWorkspace: new Map(),
     idempotency: new Map(),
   };
 
@@ -133,7 +153,34 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       };
       const bundle = { workspace, membership, allowances };
       state.bundlesByOwner.set(input.userId, bundle);
+      state.customersByWorkspace.set(workspaceId, []);
       return cloneBundle(bundle);
+    },
+    async findCustomersByNormalizedEmail(workspaceId, normalizedEmail) {
+      const rows = state.customersByWorkspace.get(workspaceId) ?? [];
+      return rows
+        .filter((row) => row.normalized_email === normalizedEmail)
+        .map((row) => ({ id: row.id, name: row.name }));
+    },
+    async createCustomer(input) {
+      const rows = state.customersByWorkspace.get(input.workspaceId) ?? [];
+      const row: CustomerRow = {
+        id: crypto.randomUUID(),
+        workspace_id: input.workspaceId,
+        name: input.fields.name,
+        email: input.fields.email,
+        normalized_email: input.fields.normalized_email,
+        phone: input.fields.phone,
+        billing_address: input.fields.billing_address,
+        archived_at: null,
+        version: 1,
+        created_at: input.now,
+        updated_at: input.now,
+        created_by: input.createdBy,
+      };
+      rows.push(row);
+      state.customersByWorkspace.set(input.workspaceId, rows);
+      return toCustomer(row);
     },
     async getIdempotency(actorScope, key) {
       const row = state.idempotency.get(`${actorScope}:${key}`);
@@ -164,6 +211,20 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       if (row) {
         row.status = status;
       }
+    },
+    setCustomerArchived(workspaceId, customerId, archivedAt) {
+      const rows = state.customersByWorkspace.get(workspaceId) ?? [];
+      const row = rows.find((item) => item.id === customerId);
+      if (!row) {
+        throw new Error("customer missing");
+      }
+      row.archived_at = archivedAt;
+    },
+    listCustomerRows(workspaceId) {
+      return (state.customersByWorkspace.get(workspaceId) ?? []).map((row) => ({
+        ...row,
+        billing_address: row.billing_address ? { ...row.billing_address } : null,
+      }));
     },
   };
 }

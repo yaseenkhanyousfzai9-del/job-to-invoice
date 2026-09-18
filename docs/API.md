@@ -221,7 +221,6 @@ Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is no
 
 ```json
 {
-  "id": "uuid (optional client id)",
   "name": "string",
   "email": "string | null",
   "phone": "string | null",
@@ -232,25 +231,27 @@ Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is no
 
 `confirm_duplicate_email` defaults false if omitted.
 
-**Duplicate email (DEC-CUST-002, CUS01).** If `email` is present and another customer in **this** workspace has the same `normalized_email`, and `confirm_duplicate_email` is not true:
+Client must not send `id`, `workspace_id`, `normalized_email`, `archived_at`, `version`, `created_at`, `updated_at`, or `created_by`. Unknown or ownership fields → 422 `VALIDATION_FAILED`.
+
+**Duplicate email (DEC-CUST-002, CUS01).** If `email` is present and another customer in **this** workspace has the same `normalized_email` (including archived rows), and `confirm_duplicate_email` is not true:
 
 - HTTP 409
 - `error.code`: `DUPLICATE_CUSTOMER_EMAIL`
 - `retryable`: false
-- Safe same-workspace metadata only, e.g. `{ "duplicates": [{ "id": "uuid", "name": "string" }] }`
+- Safe same-workspace metadata only, e.g. `{ "duplicates": [{ "id": "uuid", "name": "string" }] }` under `error.details`
 - No emails, no other-workspace ids, no existence of other tenants
 
-After the owner confirms in UI, client retries with a **new** Idempotency-Key and `confirm_duplicate_email: true`. Server rechecks: if duplicates still exist, insert the additional row; if the email is now unique, insert normally. Identical names never require this flag.
+The 409 response is stored under the request's Idempotency-Key so replay returns the same warning and does not create a row. After the owner confirms in UI, client retries with a **new** Idempotency-Key and `confirm_duplicate_email: true`. Server rechecks, then inserts. Identical names never require this flag.
 
 Empty email: no duplicate check.
 
 **Invalid phone (DEC-CUST-003).** Optional. If supplied and not parsable to E.164 without guessing country → 422 `VALIDATION_FAILED` on `phone`. No raw-phone persist.
 
-**Response `data`.** Customer resource, `version` 1.
+**Success.** HTTP `201 Created`. Response `data` is the Customer resource (`id`, `name`, `email`, `phone`, `billing_address`, `archived_at`, `version`, `created_at`, `updated_at`). `version` is 1. `archived_at` is null. Server-derived `workspace_id`, `normalized_email`, and `created_by` are not returned on the resource.
 
-**Errors.** 401; 422 validation; 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`; 429.
+**Errors.** 401 `UNAUTHENTICATED`; 422 `VALIDATION_FAILED`; 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`; 409 `WORKSPACE_REQUIRED` when the owner has no workspace; 429.
 
-**Tests.** Unicode name; same name twice; duplicate email without confirm → 409; with confirm + new key → two rows; invalid phone 422; invalid ZIP 422; extra field 422; replay; body `workspace_id` rejected; unauthenticated 401.
+**Tests.** Unicode name; same name twice; duplicate email without confirm → 409; with confirm + new key → two rows; archived same-email still warns; cross-workspace same email does not warn; invalid phone 422; invalid ZIP 422; ownership fields 422; replay; unauthenticated 401; live DB persistence under `app_api_login`.
 
 ---
 

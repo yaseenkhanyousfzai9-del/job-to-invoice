@@ -197,9 +197,14 @@ test("archive helpers distinguish archive from delete", () => {
 });
 
 test("duplicate email contract is a confirmation warning, not uniqueness", () => {
-  const error = duplicateCustomerEmailConflict();
+  const error = duplicateCustomerEmailConflict([
+    { id: "11111111-1111-4111-8111-111111111111", name: "Pat" },
+  ]);
   assert.equal(error.code, "DUPLICATE_CUSTOMER_EMAIL");
   assert.equal(error.statusCode, 409);
+  assert.deepEqual(error.details, {
+    duplicates: [{ id: "11111111-1111-4111-8111-111111111111", name: "Pat" }],
+  });
   const warning = duplicateEmailWarning([{ id: "11111111-1111-4111-8111-111111111111", name: "Pat" }]);
   assert.equal(warning.duplicates[0]?.name, "Pat");
   assert.equal(Object.hasOwn(warning.duplicates[0] ?? {}, "email"), false);

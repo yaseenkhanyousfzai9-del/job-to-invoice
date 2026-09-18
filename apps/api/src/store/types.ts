@@ -1,6 +1,12 @@
-import type { AccountStatus } from "@job-to-invoice/domain";
-import type { UsAddress } from "@job-to-invoice/domain";
-import type { WorkspaceCreateInput, WorkspaceTrade } from "@job-to-invoice/domain";
+import type {
+  AccountStatus,
+  CreateCustomerInput,
+  Customer,
+  DuplicateCustomerMatch,
+  UsAddress,
+  WorkspaceCreateInput,
+  WorkspaceTrade,
+} from "@job-to-invoice/domain";
 
 export type AppUserRecord = {
   id: string;
@@ -79,6 +85,12 @@ export type IdempotencyRecord = {
   response_json: unknown;
 };
 
+export type CustomerRow = Customer & {
+  workspace_id: string;
+  normalized_email: string | null;
+  created_by: string;
+};
+
 export type OwnerTx = {
   findUserByAuthId(authUserId: string): Promise<AppUserRecord | null>;
   insertUser(input: {
@@ -97,6 +109,16 @@ export type OwnerTx = {
     fields: WorkspaceCreateInput;
     now: string;
   }): Promise<WorkspaceBundle>;
+  findCustomersByNormalizedEmail(
+    workspaceId: string,
+    normalizedEmail: string,
+  ): Promise<DuplicateCustomerMatch[]>;
+  createCustomer(input: {
+    workspaceId: string;
+    createdBy: string;
+    fields: CreateCustomerInput;
+    now: string;
+  }): Promise<Customer>;
   getIdempotency(actorScope: string, key: string): Promise<IdempotencyRecord | null>;
   putIdempotency(record: IdempotencyRecord): Promise<void>;
 };
@@ -106,4 +128,5 @@ export type AuthStore = {
     authUserId: string,
     fn: (tx: OwnerTx) => Promise<T>,
   ): Promise<T>;
+  close?(): Promise<void>;
 };

@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 applied `app.customers` with live RLS evidence (jobs FK still PENDING). Live owner OTP (QA01/QA02) remains unverified. Customer API/UI and AUTHZ01 Customer rows stay PENDING. CUS01, CUS02, S06, S07, and S19 are not complete.
+Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 applied `app.customers` with live RLS evidence (jobs FK still PENDING). **CUST-API-01** verified `POST /v1/customers` (idempotency, duplicate-email confirmation, tenant isolation, live DB). Live owner OTP (QA01/QA02) remains unverified. GET/PATCH/archive/delete Customer APIs and Customer UI remain PENDING. CUS01, CUS02, S06, S07, and S19 are not complete overall.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -42,8 +42,8 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-01 | CUS01 | Identical customer names are allowed inside a workspace | S07, S19, S06 | `customers.name` has no uniqueness constraint | none (PRD allowlist) | Domain + API: two rows, same name | PENDING |
-| R-CUS-02 | CUS01 DEC-CUST-002 | Duplicate normalized email inside a workspace warns and requires confirmation before creating a separate named contact | S07 | `POST/PATCH /customers`; 409 `DUPLICATE_CUSTOMER_EMAIL`; `confirm_duplicate_email`; non-unique index | none (PRD allowlist) | 409 without confirmation; success with confirmation + new Idempotency-Key; two rows | PENDING |
+| R-CUS-01 | CUS01 | Identical customer names are allowed inside a workspace | S07, S19, S06 | `customers.name` has no uniqueness constraint | none (PRD allowlist) | Domain + API: two rows, same name | VERIFIED |
+| R-CUS-02 | CUS01 DEC-CUST-002 | Duplicate normalized email inside a workspace warns and requires confirmation before creating a separate named contact | S07 | `POST/PATCH /customers`; 409 `DUPLICATE_CUSTOMER_EMAIL`; `confirm_duplicate_email`; non-unique index | none (PRD allowlist) | 409 without confirmation; success with confirmation + new Idempotency-Key; two rows | VERIFIED |
 | R-CUS-03 | CUS01 | A job chooses one approval contact (one customer record) | S06 | `jobs.customer_id` composite FK | `job_created` later, no PII | Job create binds one `customer_id` | PENDING |
 | R-CUS-04 | CUS01 | Editing customer details affects future drafts only | S07 edit | `PATCH /customers/{id}` updates live row only | none (PRD allowlist) | PATCH does not write `documents.snapshot_json` | PENDING |
 | R-CUS-05 | CUS01 | Published snapshots retain original customer details | Quote publish / document snapshot | Immutable `documents` / draft `customer_snapshot` | none (PRD allowlist) | Edit customer after publish; snapshot unchanged. Depends on Quote feature | PENDING |
@@ -100,19 +100,19 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 | R-CUS-35A | S19 DEC-CUST-001 | Additive owner `GET /v1/customers/{id}`; generic 404; no unrestricted CRUD; no embedded jobs | S19 detail | `GET /v1/customers/{id}` | none (PRD allowlist) | QA03; archived still readable | PENDING |
 | R-CUS-35B | S19 DEC-CUST-006 | Associated jobs via `GET /v1/jobs?customer_id=`; foreign customer 404 | S19 detail | `GET /v1/jobs` filter | none (PRD allowlist) | Own empty list vs foreign 404 | PENDING |
 | R-CUS-36 | INV08 API03 | Default list hides archived; `state` filter can show archived | S19 | `state=active\|archived\|all` | none (PRD allowlist) | Default omits archived | PENDING |
-| R-CUS-37 | POST /customers API01 | Create versioned customer; Idempotency-Key required | S07 | `POST /v1/customers` | none (PRD allowlist) | Replay once; mismatch 409 | PENDING |
+| R-CUS-37 | POST /customers API01 | Create versioned customer; Idempotency-Key required | S07 | `POST /v1/customers` | none (PRD allowlist) | Replay once; mismatch 409 | VERIFIED |
 | R-CUS-38 | PATCH /customers/{id} SYNC03 | Mutable contact fields with If-Match; increment version | S07 edit | `PATCH /v1/customers/{id}` | none (PRD allowlist) | Stale If-Match 409 VERSION_CONFLICT | PENDING |
 | R-CUS-39 | POST /customers/{id}/archive DEC-CUST-005 | `archived` boolean; referenced records preserved; Idempotency-Key; If-Match not required; version increments on change | S07, S19 | `POST /v1/customers/{id}/archive` | none (PRD allowlist) | Archive/restore; jobs remain; no If-Match required | PENDING |
 | R-CUS-40 | DELETE /customers/{id} | Unreferenced only; otherwise 409 | S19 | `DELETE /v1/customers/{id}` | none (PRD allowlist) | 409 referenced; 404 cross-tenant | PENDING |
-| R-CUS-41 | API01 API02 | JSON envelope `{data,meta}`; errors `{error,meta}`; 401/404/409/422/429 as specified; no stack/SQL/tenant existence | all Customer API | Fastify handlers | none (PRD allowlist) | Error-shape tests | PENDING |
-| R-CUS-42 | API01 | HTTPS `/v1`; Bearer owner token; client cannot set tenant ownership or `archived_at` via POST/PATCH fields | all Customer API | Schema + AUTHZ | none (PRD allowlist) | Extra ownership fields rejected | PENDING |
+| R-CUS-41 | API01 API02 | JSON envelope `{data,meta}`; errors `{error,meta}`; 401/404/409/422/429 as specified; no stack/SQL/tenant existence | all Customer API | Fastify handlers | none (PRD allowlist) | Error-shape tests | IMPLEMENTED |
+| R-CUS-42 | API01 | HTTPS `/v1`; Bearer owner token; client cannot set tenant ownership or `archived_at` via POST/PATCH fields | all Customer API | Schema + AUTHZ | none (PRD allowlist) | Extra ownership fields rejected | IMPLEMENTED |
 
 ### Authorization and isolation
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-43 | AUTHZ01 | Every Customer read/mutation derives workspace membership from verified server identity | all Customer API | JWT + memberships + tx tenant context | none (PRD allowlist) | Handler tests with forged workspace_id | PENDING |
-| R-CUS-44 | AUTHZ01 | Client-provided `workspace_id` is not authorization | POST/PATCH bodies | Ignored/rejected; membership wins | none (PRD allowlist) | Body workspace of tenant B cannot insert into B | PENDING |
+| R-CUS-43 | AUTHZ01 | Every Customer read/mutation derives workspace membership from verified server identity | all Customer API | JWT + memberships + tx tenant context | none (PRD allowlist) | Handler tests with forged workspace_id | IMPLEMENTED |
+| R-CUS-44 | AUTHZ01 | Client-provided `workspace_id` is not authorization | POST/PATCH bodies | Ignored/rejected; membership wins | none (PRD allowlist) | Body workspace of tenant B cannot insert into B | IMPLEMENTED |
 | R-CUS-45 | AUTHZ01 SEC02 QA03 | Cross-tenant customer object references return generic 404; no data in API, storage, or logs | GET/PATCH/archive/DELETE, job bind | 404 generic | none (PRD allowlist) | QA03 two-owner fixture | PENDING |
 | R-CUS-46 | ARC03 | Tenant context is transaction-local and cannot leak across pooled connections | API | Context set/clear per tx | none (PRD allowlist) | Pool reuse test | PENDING |
 | R-CUS-47 | ACC02 | Suspended/deleting owner cannot mutate customers | API | Account status on every mutation | none (PRD allowlist) | Suspended PATCH 401/403 per account-status rules | PENDING |

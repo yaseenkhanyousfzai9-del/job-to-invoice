@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. SUPABASE-DEV-LINK-02 linked **Job to Invoice - Development US** (`us-east-1`) and applied 0001/0002. Runtime API role password and live OTP remain unverified. Customer persistence and UI are not implemented.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is READY. CUST-API-02 (list/search) remains later. Runtime OTP mailbox remains unverified. Customer UI is not started.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -572,7 +572,15 @@ Migration reproducible. Isolation tests fail closed. No Customer HTTP routes.
 
 Create Customer
 
-**Status: READY** (do not start until explicitly authorized)
+**Status: VERIFIED** (2026-09-18)
+
+### Evidence
+
+- `POST /v1/customers` in `apps/api/src/routes/customers.ts`
+- Memory suite: `apps/api/src/customers.create.test.ts`
+- Live DB suite: `apps/api/src/customers.create.live.test.ts` against development `DATABASE_URL_API` / `app_api_login`
+- Idempotency replay + mismatch; 409 `DUPLICATE_CUSTOMER_EMAIL` stored under Idempotency-Key; confirmed create with new key; cross-workspace same email does not warn; ownership fields rejected; server-derived `workspace_id` / `created_by` / `normalized_email`
+- Docs: `docs/API.md` POST section updated
 
 ### PRD IDs
 
@@ -605,11 +613,11 @@ None in this slice.
 - Bearer owner token
 - Idempotency-Key UUID required
 - Body: name, email?, phone?, billing_address?  Reject unknown fields.
-- Server sets workspace from membership, generates or accepts client UUID after tenant validation, sets version=1
+- Server sets workspace from membership, generates id, sets version=1
 - Duplicate normalized email: 409 `DUPLICATE_CUSTOMER_EMAIL` unless `confirm_duplicate_email` is true; confirmation retry uses a new Idempotency-Key (DEC-CUST-002). UI-only protection is insufficient.
 - Identical names never warn at API uniqueness level.
 - Invalid supplied phone → 422; no raw override (DEC-CUST-003).
-- Response `{ data, meta: { request_id, server_time } }` including id, version, timestamps, archived=false
+- Response `{ data, meta: { request_id, server_time } }` including id, version, timestamps, archived_at null
 - 401 unauthenticated, 422 validation, 409 duplicate-email / idempotency mismatch
 
 ### Database work
@@ -657,6 +665,8 @@ API tests against a real database. Proof that confirmation is required, not UI-o
 ## CUST-UI-01
 
 Customer Form
+
+**Status: READY** (do not start until explicitly authorized)
 
 ### PRD IDs
 
@@ -1810,10 +1820,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **READY** but not started — await explicit authorization.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **READY** — await explicit authorization before starting UI. CUST-API-02 (list/search) remains later.
 3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-API-01 until authorized. Do not start Customer UI.
+Do not start CUST-UI-01 or CUST-API-02 until authorized.

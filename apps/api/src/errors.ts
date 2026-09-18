@@ -15,7 +15,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
     );
 
     if (error instanceof AppError) {
-      void reply.status(error.statusCode).send({
+      const body: {
+        error: {
+          code: string;
+          message: string;
+          field_errors: Record<string, string[]>;
+          retryable: boolean;
+          details?: Record<string, unknown>;
+        };
+        meta: { request_id: string };
+      } = {
         error: {
           code: error.code,
           message: error.message,
@@ -23,7 +32,11 @@ export function registerErrorHandler(app: FastifyInstance): void {
           retryable: error.retryable,
         },
         meta: { request_id: request.id },
-      });
+      };
+      if (error.details !== undefined) {
+        body.error.details = error.details;
+      }
+      void reply.status(error.statusCode).send(body);
       return;
     }
 

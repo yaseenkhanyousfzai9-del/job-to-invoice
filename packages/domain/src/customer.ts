@@ -340,10 +340,14 @@ export function nextArchivedAt(
   return current ?? nowIso;
 }
 
-export function duplicateCustomerEmailConflict(): ReturnType<typeof conflict> {
+export function duplicateCustomerEmailConflict(
+  duplicates: DuplicateCustomerMatch[],
+): ReturnType<typeof conflict> {
   return conflict(
     DUPLICATE_CUSTOMER_EMAIL,
     "A contact with this email already exists. Confirm to create a separate named contact.",
+    {},
+    duplicateEmailWarning(duplicates) as unknown as Record<string, unknown>,
   );
 }
 
