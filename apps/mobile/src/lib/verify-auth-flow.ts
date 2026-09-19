@@ -55,9 +55,13 @@ export async function runVerifyAuthFlow(options: {
   verifyOtp: VerifyOtpFn;
   fetchMe: FetchMeFn;
   log?: AuthFlowLog;
+  /** Local OTP send generation; never includes the code itself. */
+  generation?: number;
 }): Promise<VerifyAuthFlowResult> {
   const log = options.log ?? (() => undefined);
-  log("verify_started");
+  log("verify_started", {
+    generation: options.generation ?? null,
+  });
 
   const { data, error: providerError } = await options.verifyOtp({
     email: options.email,

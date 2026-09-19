@@ -18,6 +18,11 @@ coverage/
 
 *.log
 
+# Temporary local auth OTP probe (never commit)
+scripts/tmp-auth-otp-probe.mjs
+**/tmp-auth-otp-probe.*
+scripts/.tmp-auth-otp-probe-*
+
 .DS_Store
 Thumbs.db
 

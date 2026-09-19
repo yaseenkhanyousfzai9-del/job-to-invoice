@@ -22,11 +22,20 @@ export default function VerifyScreen() {
   const [code, setCode] = useState("");
   const [now, setNow] = useState(Date.now());
   const submitGuard = useRef(false);
+  const resendGuard = useRef(false);
+  const lastClearedGeneration = useRef(0);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (auth.otpGeneration > 0 && auth.otpGeneration !== lastClearedGeneration.current) {
+      lastClearedGeneration.current = auth.otpGeneration;
+      setCode("");
+    }
+  }, [auth.otpGeneration]);
 
   if (auth.navigation === "setup") {
     return <Redirect href="/setup" />;
@@ -39,25 +48,31 @@ export default function VerifyScreen() {
   }
 
   const remaining = auth.cooldownUntil ? Math.max(0, Math.ceil((auth.cooldownUntil - now) / 1000)) : 0;
-  const busy = auth.verifying || submitGuard.current;
+  const verifyBusy = auth.verifying || submitGuard.current;
+  const sendBusy = auth.sending || resendGuard.current;
 
   async function onSubmit() {
-    if (submitGuard.current || auth.verifying) {
+    if (submitGuard.current || auth.verifying || auth.sending) {
       return;
     }
     submitGuard.current = true;
     try {
-      await auth.verifyCode(email, code.trim());
+      await auth.verifyCode(email, code);
     } finally {
       submitGuard.current = false;
     }
   }
 
   async function onResend() {
-    if (remaining > 0 || auth.verifying) {
+    if (remaining > 0 || auth.verifying || auth.sending || resendGuard.current) {
       return;
     }
-    await auth.sendCode(email);
+    resendGuard.current = true;
+    try {
+      await auth.sendCode(email);
+    } finally {
+      resendGuard.current = false;
+    }
   }
 
   return (
@@ -87,18 +102,25 @@ export default function VerifyScreen() {
           autoComplete="one-time-code"
           textContentType="oneTimeCode"
           maxLength={6}
-          editable={!auth.verifying}
+          editable={!auth.verifying && !auth.sending}
         />
         <PrimaryButton
           label={auth.verifying ? "Verifying…" : "Verify code"}
           onPress={() => void onSubmit()}
           loading={auth.verifying}
-          disabled={code.length !== 6 || auth.verifying || busy}
+          disabled={code.length !== 6 || auth.verifying || verifyBusy || auth.sending}
         />
         <PrimaryButton
-          label={remaining > 0 ? `Resend in ${remaining}s` : "Resend code"}
+          label={
+            auth.sending
+              ? "Sending…"
+              : remaining > 0
+                ? `Resend in ${remaining}s`
+                : "Resend code"
+          }
           onPress={() => void onResend()}
-          disabled={remaining > 0 || auth.verifying}
+          loading={auth.sending}
+          disabled={remaining > 0 || auth.verifying || sendBusy || auth.sending}
         />
         <TextLink label="Change email" onPress={() => router.replace("/sign-in")} />
       </KeyboardAvoidingView>

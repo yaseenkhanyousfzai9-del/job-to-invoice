@@ -13,6 +13,12 @@ import { resolveOwnerNavigation, validateEmail, type OwnerNavigation } from "@jo
 import { DomainApiError, fetchMe } from "../lib/api";
 import { GENERIC_CODE_SENT, mapProviderAuthError } from "../lib/auth-errors";
 import { isAuthProviderConfigured } from "../lib/config";
+import {
+  createOtpGenerationTracker,
+  createSendSingleFlight,
+  prepareVerifyToken,
+  runSendOtpFlow,
+} from "../lib/otp-send-flow";
 import { getSupabaseClient } from "../lib/supabase";
 import {
   BOOTSTRAP_FAILED_MESSAGE,
@@ -29,7 +35,9 @@ type AuthContextValue = {
   error: string | null;
   codeSentMessage: string | null;
   cooldownUntil: number | null;
+  sending: boolean;
   verifying: boolean;
+  otpGeneration: number;
   bootstrapRetryable: boolean;
   sendCode: (email: string) => Promise<boolean>;
   verifyCode: (email: string, code: string) => Promise<boolean>;
@@ -60,9 +68,13 @@ export function AuthProvider(props: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [codeSentMessage, setCodeSentMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [otpGeneration, setOtpGeneration] = useState(0);
   const [bootstrapRetryable, setBootstrapRetryable] = useState(false);
   const verifyFlight = useRef(createVerifySingleFlight()).current;
+  const sendFlight = useRef(createSendSingleFlight()).current;
+  const otpGenerationTracker = useRef(createOtpGenerationTracker()).current;
 
   const loadFromSession = useCallback(async () => {
     if (!isAuthProviderConfigured()) {
@@ -116,40 +128,58 @@ export function AuthProvider(props: { children: ReactNode }) {
       setBootstrapRetryable(false);
       return false;
     }
-    setError(null);
+
+    setSending(true);
     setBootstrapRetryable(false);
     try {
       const supabase = getSupabaseClient();
-      const { error: providerError } = await supabase.auth.signInWithOtp({
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionPresentBeforeOtp = Boolean(sessionData.session?.access_token);
+
+      const result = await runSendOtpFlow({
         email: parsed.display,
-        options: { shouldCreateUser: true },
+        flight: sendFlight,
+        generation: otpGenerationTracker,
+        sessionPresentBeforeOtp,
+        log: authFlowLog,
+        signInWithOtp: async (input) => {
+          const response = await supabase.auth.signInWithOtp({
+            email: input.email,
+          });
+          return { error: response.error };
+        },
       });
-      if (providerError) {
-        authFlowLog("verify_provider_error", {
-          status: providerError.status ?? null,
-          code: (providerError as { code?: string }).code ?? null,
-          message: providerError.message ?? null,
-        });
-        const mapped = mapProviderAuthError(providerError);
+
+      if (result.kind === "busy") {
+        return false;
+      }
+      if (result.kind === "provider_error") {
+        const mapped = mapProviderAuthError(result.error);
         setError(mapped.message);
         if (mapped.retryAfterSeconds) {
           setCooldownUntil(Date.now() + mapped.retryAfterSeconds * 1000);
         }
         return false;
       }
+
       setPendingEmail(parsed.display);
       setCodeSentMessage(GENERIC_CODE_SENT);
       setCooldownUntil(Date.now() + 60_000);
+      setOtpGeneration(result.generation);
+      setError(null);
       return true;
     } catch (cause) {
       setError(mapProviderAuthError(cause).message);
       return false;
+    } finally {
+      setSending(false);
     }
-  }, []);
+  }, [otpGenerationTracker, sendFlight]);
 
   const verifyCode = useCallback(async (email: string, code: string) => {
-    if (!/^\d{6}$/.test(code)) {
-      setError("Enter the 6-digit code.");
+    const prepared = prepareVerifyToken(code);
+    if (!prepared.ok) {
+      setError(prepared.message);
       setBootstrapRetryable(false);
       return false;
     }
@@ -159,7 +189,7 @@ export function AuthProvider(props: { children: ReactNode }) {
       return false;
     }
     if (!verifyFlight.tryBegin()) {
-      authFlowLog("verify_started", { skipped: "busy" });
+      authFlowLog("verify_started", { skipped: "busy", generation: otpGenerationTracker.current });
       return false;
     }
     setVerifying(true);
@@ -169,7 +199,8 @@ export function AuthProvider(props: { children: ReactNode }) {
       const supabase = getSupabaseClient();
       const result = await runVerifyAuthFlow({
         email,
-        code,
+        code: prepared.token,
+        generation: otpGenerationTracker.current,
         log: authFlowLog,
         verifyOtp: async (input) => {
           const response = await supabase.auth.verifyOtp(input);
@@ -206,7 +237,7 @@ export function AuthProvider(props: { children: ReactNode }) {
       verifyFlight.end();
       setVerifying(false);
     }
-  }, [verifyFlight]);
+  }, [otpGenerationTracker, verifyFlight]);
 
   const retryBootstrap = useCallback(async () => {
     if (!accessToken) {
@@ -275,7 +306,9 @@ export function AuthProvider(props: { children: ReactNode }) {
       error,
       codeSentMessage,
       cooldownUntil,
+      sending,
       verifying,
+      otpGeneration,
       bootstrapRetryable,
       sendCode,
       verifyCode,
@@ -297,7 +330,9 @@ export function AuthProvider(props: { children: ReactNode }) {
       error,
       codeSentMessage,
       cooldownUntil,
+      sending,
       verifying,
+      otpGeneration,
       bootstrapRetryable,
       sendCode,
       verifyCode,

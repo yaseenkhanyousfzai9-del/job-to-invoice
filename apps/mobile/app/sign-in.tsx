@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { validateEmail } from "@job-to-invoice/domain";
@@ -18,24 +18,31 @@ export default function SignInScreen() {
   const auth = useAuth();
   const [email, setEmail] = useState(auth.pendingEmail ?? "");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
-  const [submitting, setSubmitting] = useState(false);
+  const submitGuard = useRef(false);
 
   async function onSubmit() {
+    if (submitGuard.current || auth.sending) {
+      return;
+    }
     const parsed = validateEmail(email);
     if (parsed.error) {
       setFieldError(parsed.error);
       return;
     }
     setFieldError(undefined);
-    setSubmitting(true);
-    const ok = await auth.sendCode(parsed.display);
-    setSubmitting(false);
-    if (ok) {
-      router.push({ pathname: "/verify", params: { email: parsed.display } });
+    submitGuard.current = true;
+    try {
+      const ok = await auth.sendCode(parsed.display);
+      if (ok) {
+        router.push({ pathname: "/verify", params: { email: parsed.display } });
+      }
+    } finally {
+      submitGuard.current = false;
     }
   }
 
   const coolingDown = auth.cooldownUntil !== null && Date.now() < auth.cooldownUntil;
+  const busy = auth.sending || submitGuard.current;
 
   return (
     <Screen>
@@ -60,12 +67,13 @@ export default function SignInScreen() {
           autoComplete="email"
           textContentType="emailAddress"
           placeholder="you@business.com"
+          editable={!auth.sending}
         />
         <PrimaryButton
-          label={coolingDown ? "Wait to resend" : "Send code"}
+          label={auth.sending ? "Sending…" : coolingDown ? "Wait to resend" : "Send code"}
           onPress={() => void onSubmit()}
-          loading={submitting}
-          disabled={coolingDown}
+          loading={auth.sending}
+          disabled={coolingDown || busy || auth.sending}
         />
       </KeyboardAvoidingView>
     </Screen>
