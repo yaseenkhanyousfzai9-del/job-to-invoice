@@ -34,7 +34,8 @@ export default function SignInScreen() {
     try {
       const ok = await auth.sendCode(parsed.display);
       if (ok) {
-        router.push({ pathname: "/verify", params: { email: parsed.display } });
+        // Params are a fallback only; AuthProvider.pendingEmail is authoritative for verify.
+        router.replace({ pathname: "/verify", params: { email: parsed.display } });
       }
     } finally {
       submitGuard.current = false;

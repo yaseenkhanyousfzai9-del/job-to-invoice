@@ -12,13 +12,18 @@ import {
   TextLink,
   Title,
 } from "../src/components/ui";
+import { resolveCanonicalVerifyEmail } from "../src/lib/otp-request-state";
 import { useAuth } from "../src/providers/AuthProvider";
 
 export default function VerifyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string }>();
   const auth = useAuth();
-  const email = params.email ?? auth.pendingEmail ?? "";
+  const resolved = resolveCanonicalVerifyEmail({
+    pendingEmail: auth.pendingEmail,
+    routeEmail: params.email,
+  });
+  const email = resolved.email;
   const [code, setCode] = useState("");
   const [now, setNow] = useState(Date.now());
   const submitGuard = useRef(false);
@@ -57,7 +62,14 @@ export default function VerifyScreen() {
     }
     submitGuard.current = true;
     try {
-      await auth.verifyCode(email, code);
+      // AuthProvider resolves pendingEmail over route; pass route only as hint.
+      const routeHint =
+        typeof params.email === "string"
+          ? params.email
+          : Array.isArray(params.email)
+            ? params.email[0]
+            : undefined;
+      await auth.verifyCode(routeHint, code);
     } finally {
       submitGuard.current = false;
     }
@@ -69,6 +81,7 @@ export default function VerifyScreen() {
     }
     resendGuard.current = true;
     try {
+      // Resend to the canonical latest-send email, not a stale route param.
       await auth.sendCode(email);
     } finally {
       resendGuard.current = false;

@@ -14,7 +14,10 @@ import { DomainApiError, fetchMe } from "../lib/api";
 import { GENERIC_CODE_SENT, mapProviderAuthError } from "../lib/auth-errors";
 import { isAuthProviderConfigured } from "../lib/config";
 import {
-  createOtpGenerationTracker,
+  createLatestOtpRequestState,
+  resolveCanonicalVerifyEmail,
+} from "../lib/otp-request-state";
+import {
   createSendSingleFlight,
   prepareVerifyToken,
   runSendOtpFlow,
@@ -40,7 +43,7 @@ type AuthContextValue = {
   otpGeneration: number;
   bootstrapRetryable: boolean;
   sendCode: (email: string) => Promise<boolean>;
-  verifyCode: (email: string, code: string) => Promise<boolean>;
+  verifyCode: (routeEmailHint: string | undefined, code: string) => Promise<boolean>;
   retryBootstrap: () => Promise<boolean>;
   refreshMe: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -60,6 +63,20 @@ function authFlowLog(
   console.warn("[auth-flow]", stage, extra ?? {});
 }
 
+function authVerifyStateLog(extra: Record<string, string | number | boolean | null>): void {
+  if (!__DEV__) {
+    return;
+  }
+  console.warn("[auth-verify-state]", extra);
+}
+
+function authSendStateLog(extra: Record<string, string | number | boolean | null>): void {
+  if (!__DEV__) {
+    return;
+  }
+  console.warn("[auth-send-state]", extra);
+}
+
 export function AuthProvider(props: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<MeData | null>(null);
@@ -74,7 +91,7 @@ export function AuthProvider(props: { children: ReactNode }) {
   const [bootstrapRetryable, setBootstrapRetryable] = useState(false);
   const verifyFlight = useRef(createVerifySingleFlight()).current;
   const sendFlight = useRef(createSendSingleFlight()).current;
-  const otpGenerationTracker = useRef(createOtpGenerationTracker()).current;
+  const latestOtpRequest = useRef(createLatestOtpRequestState()).current;
 
   const loadFromSession = useCallback(async () => {
     if (!isAuthProviderConfigured()) {
@@ -139,7 +156,12 @@ export function AuthProvider(props: { children: ReactNode }) {
       const result = await runSendOtpFlow({
         email: parsed.display,
         flight: sendFlight,
-        generation: otpGenerationTracker,
+        generation: {
+          get current() {
+            return latestOtpRequest.current?.generation ?? 0;
+          },
+          bump: () => latestOtpRequest.recordSuccessfulSend(parsed.display).generation,
+        },
         sessionPresentBeforeOtp,
         log: authFlowLog,
         signInWithOtp: async (input) => {
@@ -167,6 +189,10 @@ export function AuthProvider(props: { children: ReactNode }) {
       setCooldownUntil(Date.now() + 60_000);
       setOtpGeneration(result.generation);
       setError(null);
+      authSendStateLog({
+        generation: result.generation,
+        canonical_email_updated: true,
+      });
       return true;
     } catch (cause) {
       setError(mapProviderAuthError(cause).message);
@@ -174,33 +200,69 @@ export function AuthProvider(props: { children: ReactNode }) {
     } finally {
       setSending(false);
     }
-  }, [otpGenerationTracker, sendFlight]);
+  }, [latestOtpRequest, sendFlight]);
 
-  const verifyCode = useCallback(async (email: string, code: string) => {
+  const verifyCode = useCallback(async (routeEmailHint: string | undefined, code: string) => {
     const prepared = prepareVerifyToken(code);
     if (!prepared.ok) {
       setError(prepared.message);
       setBootstrapRetryable(false);
       return false;
     }
+
+    const resolved = resolveCanonicalVerifyEmail({
+      pendingEmail: latestOtpRequest.current?.email ?? pendingEmail,
+      routeEmail: routeEmailHint,
+    });
+    if (!resolved.email) {
+      setError("Request a new sign-in code.");
+      setBootstrapRetryable(false);
+      return false;
+    }
+
     if (!isAuthProviderConfigured()) {
       setError(mapProviderAuthError(new Error("AUTH_NOT_CONFIGURED")).message);
       setBootstrapRetryable(false);
       return false;
     }
     if (!verifyFlight.tryBegin()) {
-      authFlowLog("verify_started", { skipped: "busy", generation: otpGenerationTracker.current });
+      authFlowLog("verify_started", {
+        skipped: "busy",
+        generation: latestOtpRequest.current?.generation ?? otpGeneration,
+      });
       return false;
     }
+
+    const generation = latestOtpRequest.current?.generation ?? otpGeneration;
+    const pendingPresent = Boolean(latestOtpRequest.current?.email ?? pendingEmail);
+    const routePresent = Boolean(routeEmailHint && String(routeEmailHint).trim());
+    const pendingEqualsRoute =
+      pendingPresent &&
+      routePresent &&
+      (latestOtpRequest.current?.email ?? pendingEmail) === routeEmailHint?.trim();
+
     setVerifying(true);
     setError(null);
     setBootstrapRetryable(false);
     try {
       const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionPresentBeforeVerify = Boolean(sessionData.session?.access_token);
+
+      authVerifyStateLog({
+        generation,
+        pending_email_present: pendingPresent,
+        route_email_present: routePresent,
+        pending_equals_route: pendingEqualsRoute,
+        verify_email_source: resolved.source,
+        token_length: prepared.token.length,
+        session_present_before_verify: sessionPresentBeforeVerify,
+      });
+
       const result = await runVerifyAuthFlow({
-        email,
+        email: resolved.email,
         code: prepared.token,
-        generation: otpGenerationTracker.current,
+        generation,
         log: authFlowLog,
         verifyOtp: async (input) => {
           const response = await supabase.auth.verifyOtp(input);
@@ -218,7 +280,7 @@ export function AuthProvider(props: { children: ReactNode }) {
       }
       if (result.kind === "bootstrap_failed") {
         setAccessToken(result.accessToken);
-        setPendingEmail(email);
+        setPendingEmail(resolved.email);
         setBootstrapRetryable(true);
         setError(result.message);
         return false;
@@ -229,7 +291,7 @@ export function AuthProvider(props: { children: ReactNode }) {
 
       setAccessToken(result.accessToken);
       setMe(result.me);
-      setPendingEmail(email);
+      setPendingEmail(resolved.email);
       setBootstrapRetryable(false);
       setError(null);
       return true;
@@ -237,7 +299,7 @@ export function AuthProvider(props: { children: ReactNode }) {
       verifyFlight.end();
       setVerifying(false);
     }
-  }, [otpGenerationTracker, verifyFlight]);
+  }, [latestOtpRequest, otpGeneration, pendingEmail, verifyFlight]);
 
   const retryBootstrap = useCallback(async () => {
     if (!accessToken) {
@@ -289,7 +351,9 @@ export function AuthProvider(props: { children: ReactNode }) {
     setPendingEmail(null);
     setError(null);
     setBootstrapRetryable(false);
-  }, []);
+    latestOtpRequest.clear();
+    setOtpGeneration(0);
+  }, [latestOtpRequest]);
 
   const navigation = resolveOwnerNavigation({
     hasSession: Boolean(accessToken),
