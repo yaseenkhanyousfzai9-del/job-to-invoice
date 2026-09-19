@@ -18,13 +18,6 @@ import {
 } from "../../src/features/setup/setupContactForm";
 import { useSetupDraft } from "../../src/providers/SetupDraftProvider";
 
-function setupContactDiag(extra: Record<string, string | number | boolean | null>): void {
-  if (typeof __DEV__ !== "undefined" && !__DEV__) {
-    return;
-  }
-  console.warn("[setup-contact-diag]", extra);
-}
-
 export default function SetupContactScreen() {
   const router = useRouter();
   const { draft, update } = useSetupDraft();
@@ -36,6 +29,7 @@ export default function SetupContactScreen() {
   }, [draft]);
 
   function patchField(patch: Partial<WorkspaceSetupDraft>, clearKey?: string) {
+    draftRef.current = { ...draftRef.current, ...patch };
     update(patch);
     if (clearKey) {
       setErrors((current) => clearSetupFieldError(current, clearKey));
@@ -43,18 +37,7 @@ export default function SetupContactScreen() {
   }
 
   function onNext() {
-    // Always validate the latest shared draft, not a stale render closure.
-    const current = draftRef.current;
-    const result = runSetupStep2Continue(current);
-    setupContactDiag({
-      state_present: result.statePresent,
-      state_length: result.stateLength,
-      state_normalized_valid: result.stateNormalizedValid,
-      zip_present: result.zipPresent,
-      zip_length: result.zipLength,
-      zip_format_valid: result.zipFormatValid,
-      address_validation_success: result.canAdvance,
-    });
+    const result = runSetupStep2Continue(draftRef.current);
     setErrors(result.errors);
     if (result.canAdvance) {
       router.push("/setup/defaults");

@@ -10,6 +10,7 @@ import {
   validateEmail,
   validateOptionalE164,
   validateSetupStep1,
+  validateSetupStep3,
   emptyWorkspaceSetupDraft,
 } from "./index.ts";
 
@@ -126,6 +127,18 @@ test("setup step 1 validation uses VAL01 bounds", () => {
   const errors = validateSetupStep1(draft);
   assert.ok(errors["business_name"]);
   assert.ok(errors["trade"]);
+});
+
+test("setup step 3 requires timezone confirmation before submit", () => {
+  const unconfirmed = {
+    ...emptyWorkspaceSetupDraft("Asia/Karachi"),
+    timezone_confirmed: false,
+    default_tax_bp: "0",
+    default_due_days: "14",
+  };
+  assert.equal(validateSetupStep3(unconfirmed)["timezone"], "Confirm the business timezone.");
+  const confirmed = { ...unconfirmed, timezone_confirmed: true };
+  assert.equal(validateSetupStep3(confirmed)["timezone"], undefined);
 });
 
 test("resolveOwnerNavigation maps session and bootstrap state", () => {

@@ -2,10 +2,6 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import {
-  validateSetupStep3,
-  workspaceCreateBodyFromDraft,
-} from "@job-to-invoice/domain";
-import {
   Body,
   ErrorBanner,
   Field,
@@ -14,6 +10,11 @@ import {
   Secondary,
   Title,
 } from "../../src/components/ui";
+import {
+  firstSetupStep3Error,
+  isSetupStep3CreateEnabled,
+  runSetupStep3Create,
+} from "../../src/features/setup/setupDefaultsForm";
 import { DomainApiError, createWorkspace } from "../../src/lib/api";
 import { useAuth } from "../../src/providers/AuthProvider";
 import { useSetupDraft } from "../../src/providers/SetupDraftProvider";
@@ -25,15 +26,17 @@ export default function SetupDefaultsScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const createEnabled = isSetupStep3CreateEnabled(draft);
 
   if (auth.navigation === "app") {
     return <Redirect href="/(app)" />;
   }
 
   async function onSubmit() {
-    const nextErrors = validateSetupStep3(draft);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) {
+    const result = runSetupStep3Create(draft);
+    setErrors(result.errors);
+    if (!result.canSubmit || !result.body) {
+      setFormError(firstSetupStep3Error(result.errors) ?? "Fix the highlighted fields to continue.");
       return;
     }
     if (!auth.accessToken) {
@@ -43,11 +46,7 @@ export default function SetupDefaultsScreen() {
     setSubmitting(true);
     setFormError(null);
     try {
-      await createWorkspace(
-        auth.accessToken,
-        workspaceCreateBodyFromDraft(draft),
-        crypto.randomUUID(),
-      );
+      await createWorkspace(auth.accessToken, result.body, crypto.randomUUID());
       await auth.refreshMe();
       router.replace("/(app)");
     } catch (cause) {
@@ -72,9 +71,10 @@ export default function SetupDefaultsScreen() {
       <ScrollView keyboardShouldPersistTaps="handled">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ gap: 12 }}>
           <Title>Defaults</Title>
-          <Body>Step 3 of 3. Confirm timezone and document defaults. Currency is USD and cannot be changed.</Body>
+          <Body>
+            Step 3 of 3. Confirm timezone and document defaults. Currency is USD and cannot be changed.
+          </Body>
           <Secondary>Optional logo upload is skipped in this slice.</Secondary>
-          <ErrorBanner message={formError} />
           <Field
             label="Business timezone"
             value={draft.timezone}
@@ -83,8 +83,19 @@ export default function SetupDefaultsScreen() {
           />
           <PrimaryButton
             label={draft.timezone_confirmed ? "Timezone confirmed" : "Confirm this timezone"}
-            onPress={() => update({ timezone_confirmed: true })}
+            onPress={() => {
+              update({ timezone_confirmed: true });
+              setErrors((current) => {
+                const next = { ...current };
+                delete next["timezone"];
+                return next;
+              });
+              setFormError(null);
+            }}
           />
+          {!createEnabled ? (
+            <Secondary>Tap “Confirm this timezone” before Create workspace.</Secondary>
+          ) : null}
           <Field
             label="Default tax (basis points)"
             value={draft.default_tax_bp}
@@ -106,10 +117,12 @@ export default function SetupDefaultsScreen() {
             onChangeText={(value) => update({ default_terms: value })}
             error={errors["default_terms"]}
           />
+          <ErrorBanner message={formError} />
           <PrimaryButton
             label="Create workspace"
             onPress={() => void onSubmit()}
             loading={submitting}
+            disabled={!createEnabled}
           />
         </KeyboardAvoidingView>
       </ScrollView>
