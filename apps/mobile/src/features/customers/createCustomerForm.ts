@@ -6,6 +6,7 @@ import {
   type DuplicateCustomerMatch,
 } from "@job-to-invoice/domain";
 import { DomainApiError, createCustomer } from "../../lib/api";
+import { createClientUuid } from "../../lib/clientUuid";
 
 export type CustomerFormDraft = {
   name: string;
@@ -95,7 +96,7 @@ export function materialCustomerFormFingerprint(draft: CustomerFormDraft): strin
   });
 }
 
-export function createCustomerIdempotencySession(newKey: () => string = () => crypto.randomUUID()) {
+export function createCustomerIdempotencySession(newKey: () => string = createClientUuid) {
   let key = newKey();
   let fingerprint = "";
 

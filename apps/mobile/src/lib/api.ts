@@ -1,5 +1,6 @@
 import type { Customer, MeData } from "@job-to-invoice/domain";
 import { loadMobileConfig } from "./config";
+import { createClientUuid } from "./clientUuid";
 
 export type ApiError = {
   code: string;
@@ -31,7 +32,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
   const config = loadMobileConfig();
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.accessToken}`,
-    "X-Request-Id": crypto.randomUUID(),
+    "X-Request-Id": createClientUuid(),
   };
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";

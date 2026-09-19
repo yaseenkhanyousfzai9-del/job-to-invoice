@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Customer } from "@job-to-invoice/domain";
+import { isUuid, type Customer } from "@job-to-invoice/domain";
 import { DomainApiError } from "../../lib/api";
 import {
   buildCreateCustomerRequestBody,
@@ -333,6 +333,39 @@ test("idempotency session reuses key for same material fields and rotates on cha
     materialCustomerFormFingerprint(a),
     materialCustomerFormFingerprint(draft({ name: "Other" })),
   );
+});
+
+test("idempotency session initializes without global crypto.randomUUID", () => {
+  const original = globalThis.crypto;
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: undefined,
+  });
+  try {
+    const session = createCustomerIdempotencySession();
+    const key = session.keyForMaterialDraft(draft({ name: "Pat" }));
+    assert.equal(isUuid(key), true);
+    assert.equal(session.keyForMaterialDraft(draft({ name: "Pat" })), key);
+  } finally {
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: original,
+    });
+  }
+});
+
+test("default idempotency key is UUID-shaped for first submission", () => {
+  const session = createCustomerIdempotencySession();
+  const key = session.keyForMaterialDraft(draft({ name: "Pat" }));
+  assert.equal(isUuid(key), true);
+});
+
+test("duplicate confirm rotates to a new UUID key", () => {
+  const session = createCustomerIdempotencySession();
+  const first = session.keyForMaterialDraft(draft({ name: "Pat", email: "a@b.com" }));
+  const confirm = session.newKeyForConfirmation();
+  assert.notEqual(confirm, first);
+  assert.equal(isUuid(confirm), true);
 });
 
 test("successful save path clears form draft helper", () => {
