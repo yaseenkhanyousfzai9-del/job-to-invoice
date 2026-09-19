@@ -16,6 +16,7 @@ import {
   runSetupStep3Create,
 } from "../../src/features/setup/setupDefaultsForm";
 import { DomainApiError, createWorkspace } from "../../src/lib/api";
+import { createClientUuid } from "../../src/lib/clientUuid";
 import { useAuth } from "../../src/providers/AuthProvider";
 import { useSetupDraft } from "../../src/providers/SetupDraftProvider";
 
@@ -46,7 +47,7 @@ export default function SetupDefaultsScreen() {
     setSubmitting(true);
     setFormError(null);
     try {
-      await createWorkspace(auth.accessToken, result.body, crypto.randomUUID());
+      await createWorkspace(auth.accessToken, result.body, createClientUuid());
       await auth.refreshMe();
       router.replace("/(app)");
     } catch (cause) {
