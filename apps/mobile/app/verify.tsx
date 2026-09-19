@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { maskEmail } from "@job-to-invoice/domain";
@@ -20,8 +20,8 @@ export default function VerifyScreen() {
   const auth = useAuth();
   const email = params.email ?? auth.pendingEmail ?? "";
   const [code, setCode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const submitGuard = useRef(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
@@ -39,18 +39,22 @@ export default function VerifyScreen() {
   }
 
   const remaining = auth.cooldownUntil ? Math.max(0, Math.ceil((auth.cooldownUntil - now) / 1000)) : 0;
+  const busy = auth.verifying || submitGuard.current;
 
   async function onSubmit() {
-    setSubmitting(true);
-    const ok = await auth.verifyCode(email, code.trim());
-    setSubmitting(false);
-    if (!ok) {
+    if (submitGuard.current || auth.verifying) {
       return;
+    }
+    submitGuard.current = true;
+    try {
+      await auth.verifyCode(email, code.trim());
+    } finally {
+      submitGuard.current = false;
     }
   }
 
   async function onResend() {
-    if (remaining > 0) {
+    if (remaining > 0 || auth.verifying) {
       return;
     }
     await auth.sendCode(email);
@@ -62,7 +66,16 @@ export default function VerifyScreen() {
         <Title>Enter code</Title>
         <Body>{`We sent a 6-digit code to ${maskEmail(email)}.`}</Body>
         <Secondary>{auth.codeSentMessage ?? "The message is the same whether or not an account already exists."}</Secondary>
-        <ErrorBanner message={auth.error} />
+        <ErrorBanner
+          message={auth.error}
+          onRetry={
+            auth.bootstrapRetryable
+              ? () => {
+                  void auth.retryBootstrap();
+                }
+              : undefined
+          }
+        />
         <Field
           label="6-digit code"
           value={code}
@@ -74,17 +87,18 @@ export default function VerifyScreen() {
           autoComplete="one-time-code"
           textContentType="oneTimeCode"
           maxLength={6}
+          editable={!auth.verifying}
         />
         <PrimaryButton
-          label="Verify code"
+          label={auth.verifying ? "Verifying…" : "Verify code"}
           onPress={() => void onSubmit()}
-          loading={submitting}
-          disabled={code.length !== 6}
+          loading={auth.verifying}
+          disabled={code.length !== 6 || auth.verifying || busy}
         />
         <PrimaryButton
           label={remaining > 0 ? `Resend in ${remaining}s` : "Resend code"}
           onPress={() => void onResend()}
-          disabled={remaining > 0}
+          disabled={remaining > 0 || auth.verifying}
         />
         <TextLink label="Change email" onPress={() => router.replace("/sign-in")} />
       </KeyboardAvoidingView>

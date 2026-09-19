@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +14,11 @@ import { DomainApiError, fetchMe } from "../lib/api";
 import { GENERIC_CODE_SENT, mapProviderAuthError } from "../lib/auth-errors";
 import { isAuthProviderConfigured } from "../lib/config";
 import { getSupabaseClient } from "../lib/supabase";
+import {
+  BOOTSTRAP_FAILED_MESSAGE,
+  createVerifySingleFlight,
+  runVerifyAuthFlow,
+} from "../lib/verify-auth-flow";
 
 type AuthContextValue = {
   loading: boolean;
@@ -23,8 +29,11 @@ type AuthContextValue = {
   error: string | null;
   codeSentMessage: string | null;
   cooldownUntil: number | null;
+  verifying: boolean;
+  bootstrapRetryable: boolean;
   sendCode: (email: string) => Promise<boolean>;
   verifyCode: (email: string, code: string) => Promise<boolean>;
+  retryBootstrap: () => Promise<boolean>;
   refreshMe: () => Promise<void>;
   signOut: () => Promise<void>;
   setPendingEmail: (email: string | null) => void;
@@ -32,6 +41,16 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+function authFlowLog(
+  stage: string,
+  extra?: Record<string, string | number | boolean | null>,
+): void {
+  if (!__DEV__) {
+    return;
+  }
+  console.warn("[auth-flow]", stage, extra ?? {});
+}
 
 export function AuthProvider(props: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
@@ -41,6 +60,9 @@ export function AuthProvider(props: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [codeSentMessage, setCodeSentMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [bootstrapRetryable, setBootstrapRetryable] = useState(false);
+  const verifyFlight = useRef(createVerifySingleFlight()).current;
 
   const loadFromSession = useCallback(async () => {
     if (!isAuthProviderConfigured()) {
@@ -60,6 +82,7 @@ export function AuthProvider(props: { children: ReactNode }) {
       }
       try {
         setMe(await fetchMe(token));
+        setBootstrapRetryable(false);
       } catch (cause) {
         if (cause instanceof DomainApiError && cause.api.status === 401) {
           await supabase.auth.signOut();
@@ -67,11 +90,8 @@ export function AuthProvider(props: { children: ReactNode }) {
           setMe(null);
           return;
         }
-        setError(
-          cause instanceof DomainApiError
-            ? cause.api.message
-            : "Could not load your account.",
-        );
+        setBootstrapRetryable(true);
+        setError(BOOTSTRAP_FAILED_MESSAGE);
       }
     } catch (cause) {
       setError(mapProviderAuthError(cause).message);
@@ -88,13 +108,16 @@ export function AuthProvider(props: { children: ReactNode }) {
     const parsed = validateEmail(email);
     if (parsed.error) {
       setError(parsed.error);
+      setBootstrapRetryable(false);
       return false;
     }
     if (!isAuthProviderConfigured()) {
       setError(mapProviderAuthError(new Error("AUTH_NOT_CONFIGURED")).message);
+      setBootstrapRetryable(false);
       return false;
     }
     setError(null);
+    setBootstrapRetryable(false);
     try {
       const supabase = getSupabaseClient();
       const { error: providerError } = await supabase.auth.signInWithOtp({
@@ -102,6 +125,11 @@ export function AuthProvider(props: { children: ReactNode }) {
         options: { shouldCreateUser: true },
       });
       if (providerError) {
+        authFlowLog("verify_provider_error", {
+          status: providerError.status ?? null,
+          code: (providerError as { code?: string }).code ?? null,
+          message: providerError.message ?? null,
+        });
         const mapped = mapProviderAuthError(providerError);
         setError(mapped.message);
         if (mapped.retryAfterSeconds) {
@@ -122,37 +150,96 @@ export function AuthProvider(props: { children: ReactNode }) {
   const verifyCode = useCallback(async (email: string, code: string) => {
     if (!/^\d{6}$/.test(code)) {
       setError("Enter the 6-digit code.");
+      setBootstrapRetryable(false);
       return false;
     }
     if (!isAuthProviderConfigured()) {
       setError(mapProviderAuthError(new Error("AUTH_NOT_CONFIGURED")).message);
+      setBootstrapRetryable(false);
       return false;
     }
+    if (!verifyFlight.tryBegin()) {
+      authFlowLog("verify_started", { skipped: "busy" });
+      return false;
+    }
+    setVerifying(true);
     setError(null);
+    setBootstrapRetryable(false);
     try {
       const supabase = getSupabaseClient();
-      const { data, error: providerError } = await supabase.auth.verifyOtp({
+      const result = await runVerifyAuthFlow({
         email,
-        token: code,
-        type: "email",
+        code,
+        log: authFlowLog,
+        verifyOtp: async (input) => {
+          const response = await supabase.auth.verifyOtp(input);
+          return {
+            data: { session: response.data.session },
+            error: response.error,
+          };
+        },
+        fetchMe,
       });
-      if (providerError || !data.session) {
-        setError(mapProviderAuthError(providerError ?? new Error("invalid")).message);
+
+      if (result.kind === "otp_invalid") {
+        setError(result.message);
         return false;
       }
-      setAccessToken(data.session.access_token);
-      setMe(await fetchMe(data.session.access_token));
+      if (result.kind === "bootstrap_failed") {
+        setAccessToken(result.accessToken);
+        setPendingEmail(email);
+        setBootstrapRetryable(true);
+        setError(result.message);
+        return false;
+      }
+      if (result.kind === "busy") {
+        return false;
+      }
+
+      setAccessToken(result.accessToken);
+      setMe(result.me);
       setPendingEmail(email);
+      setBootstrapRetryable(false);
+      setError(null);
       return true;
-    } catch (cause) {
-      if (cause instanceof DomainApiError) {
-        setError(cause.api.message);
-        return false;
-      }
-      setError(mapProviderAuthError(cause).message);
+    } finally {
+      verifyFlight.end();
+      setVerifying(false);
+    }
+  }, [verifyFlight]);
+
+  const retryBootstrap = useCallback(async () => {
+    if (!accessToken) {
       return false;
     }
-  }, []);
+    authFlowLog("bootstrap_started", { retry: true });
+    setError(null);
+    try {
+      const nextMe = await fetchMe(accessToken);
+      setMe(nextMe);
+      setBootstrapRetryable(false);
+      authFlowLog("bootstrap_success", { retry: true });
+      return true;
+    } catch (cause) {
+      const status = cause instanceof DomainApiError ? cause.api.status : null;
+      authFlowLog("bootstrap_status", { status, retry: true });
+      if (cause instanceof DomainApiError && cause.api.status === 401) {
+        if (isAuthProviderConfigured()) {
+          const supabase = getSupabaseClient();
+          await supabase.auth.signOut();
+        }
+        setAccessToken(null);
+        setMe(null);
+        setPendingEmail(null);
+        setBootstrapRetryable(false);
+        setError("Sign in to continue.");
+        return false;
+      }
+      setBootstrapRetryable(true);
+      setError(BOOTSTRAP_FAILED_MESSAGE);
+      return false;
+    }
+  }, [accessToken]);
 
   const refreshMe = useCallback(async () => {
     if (!accessToken) {
@@ -170,6 +257,7 @@ export function AuthProvider(props: { children: ReactNode }) {
     setMe(null);
     setPendingEmail(null);
     setError(null);
+    setBootstrapRetryable(false);
   }, []);
 
   const navigation = resolveOwnerNavigation({
@@ -187,12 +275,18 @@ export function AuthProvider(props: { children: ReactNode }) {
       error,
       codeSentMessage,
       cooldownUntil,
+      verifying,
+      bootstrapRetryable,
       sendCode,
       verifyCode,
+      retryBootstrap,
       refreshMe,
       signOut,
       setPendingEmail,
-      clearError: () => setError(null),
+      clearError: () => {
+        setError(null);
+        setBootstrapRetryable(false);
+      },
     }),
     [
       loading,
@@ -203,8 +297,11 @@ export function AuthProvider(props: { children: ReactNode }) {
       error,
       codeSentMessage,
       cooldownUntil,
+      verifying,
+      bootstrapRetryable,
       sendCode,
       verifyCode,
+      retryBootstrap,
       refreshMe,
       signOut,
     ],
