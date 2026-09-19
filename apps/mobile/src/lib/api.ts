@@ -1,4 +1,4 @@
-import type { MeData } from "@job-to-invoice/domain";
+import type { Customer, MeData } from "@job-to-invoice/domain";
 import { loadMobileConfig } from "./config";
 
 export type ApiError = {
@@ -7,6 +7,7 @@ export type ApiError = {
   field_errors: Record<string, string[]>;
   retryable: boolean;
   status: number;
+  details?: Record<string, unknown>;
 };
 
 export class DomainApiError extends Error {
@@ -57,11 +58,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
   }
 
   const json = (await response.json().catch(() => null)) as
-    | { data?: T; error?: { code?: string; message?: string; field_errors?: Record<string, string[]>; retryable?: boolean } }
+    | {
+        data?: T;
+        error?: {
+          code?: string;
+          message?: string;
+          field_errors?: Record<string, string[]>;
+          retryable?: boolean;
+          details?: Record<string, unknown>;
+        };
+      }
     | null;
 
   if (!response.ok) {
-    throw new DomainApiError({
+    const apiError: ApiError = {
       code: json?.error?.code ?? (response.status === 401 ? "UNAUTHENTICATED" : "INTERNAL_ERROR"),
       message:
         json?.error?.message ??
@@ -69,7 +79,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
       field_errors: json?.error?.field_errors ?? {},
       retryable: json?.error?.retryable ?? response.status >= 500,
       status: response.status,
-    });
+    };
+    if (json?.error?.details !== undefined) {
+      apiError.details = json.error.details;
+    }
+    throw new DomainApiError(apiError);
   }
 
   return json?.data as T;
@@ -85,6 +99,19 @@ export async function createWorkspace(
   idempotencyKey: string,
 ): Promise<unknown> {
   return apiRequest("/v1/workspace", {
+    method: "POST",
+    accessToken,
+    body,
+    idempotencyKey,
+  });
+}
+
+export async function createCustomer(
+  accessToken: string,
+  body: unknown,
+  idempotencyKey: string,
+): Promise<Customer> {
+  return apiRequest<Customer>("/v1/customers", {
     method: "POST",
     accessToken,
     body,

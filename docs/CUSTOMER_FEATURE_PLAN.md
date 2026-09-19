@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is READY. CUST-API-02 (list/search) remains later. Runtime OTP mailbox remains unverified. Customer UI is not started.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is IMPLEMENTED (create form). CUST-API-02 (list/search) remains later and is not READY until authorized. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -666,7 +666,16 @@ API tests against a real database. Proof that confirmation is required, not UI-o
 
 Customer Form
 
-**Status: READY** (do not start until explicitly authorized)
+**Status: IMPLEMENTED** (2026-09-19) — create-only S07. Not VERIFIED until physical Android exercise of the flow.
+
+### Evidence
+
+- Route: `/(app)/customers/new` (`apps/mobile/app/(app)/customers/new.tsx`)
+- Owner shell entry: **Add customer** on `/(app)` (no fake list)
+- Shared domain validation via `parseCreateCustomerInput`
+- API: `createCustomer` → `POST /v1/customers` with Bearer + Idempotency-Key
+- Duplicate 409 confirmation UI; confirm uses new Idempotency-Key + `confirm_duplicate_email: true`
+- Automated: `apps/mobile/src/features/customers/createCustomerForm.test.ts`
 
 ### PRD IDs
 
@@ -1820,7 +1829,7 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **READY** — await explicit authorization before starting UI. CUST-API-02 (list/search) remains later.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **IMPLEMENTED** (create form). CUST-API-02 (list/search) remains later and is not started.
 3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.

@@ -122,7 +122,10 @@ export function PrimaryButton(props: {
       style={[styles.button, disabled ? styles.buttonDisabled : null]}
     >
       {props.loading ? (
-        <ActivityIndicator color="#ffffff" />
+        <View style={styles.buttonLoading}>
+          <ActivityIndicator color="#ffffff" />
+          <Text style={styles.buttonLabel}>{props.label}</Text>
+        </View>
       ) : (
         <Text style={styles.buttonLabel}>{props.label}</Text>
       )}
@@ -215,6 +218,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonDisabled: { opacity: 0.5 },
+  buttonLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   buttonLabel: {
     color: "#ffffff",
     fontSize: typography.body.fontSize,
