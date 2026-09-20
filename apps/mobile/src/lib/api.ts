@@ -1,6 +1,18 @@
-import type { Customer, MeData } from "@job-to-invoice/domain";
+import type { Customer, CustomerListState, MeData } from "@job-to-invoice/domain";
 import { loadMobileConfig } from "./config";
 import { createClientUuid } from "./clientUuid";
+
+export type CustomerListPage = {
+  items: Customer[];
+  next_cursor: string | null;
+};
+
+export type ListCustomersParams = {
+  state?: CustomerListState;
+  search?: string | null;
+  limit?: number;
+  cursor?: string | null;
+};
 
 export type ApiError = {
   code: string;
@@ -131,4 +143,25 @@ export async function createCustomer(
     body,
     idempotencyKey,
   });
+}
+
+export function buildListCustomersPath(params: ListCustomersParams = {}): string {
+  const query = new URLSearchParams();
+  query.set("state", params.state ?? "active");
+  query.set("limit", String(params.limit ?? 25));
+  const search = typeof params.search === "string" ? params.search.trim() : "";
+  if (search.length > 0) {
+    query.set("search", search);
+  }
+  if (typeof params.cursor === "string" && params.cursor.length > 0) {
+    query.set("cursor", params.cursor);
+  }
+  return `/v1/customers?${query.toString()}`;
+}
+
+export async function listCustomers(
+  accessToken: string,
+  params: ListCustomersParams = {},
+): Promise<CustomerListPage> {
+  return apiRequest<CustomerListPage>(buildListCustomersPath(params), { accessToken });
 }

@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, and CUST-API-02 are VERIFIED on the US development project. CUST-UI-01 is VERIFIED on physical Android (create form). CUST-UI-02 (Customers list UI) remains PENDING. S19 is not fully VERIFIED until list UI lands. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, and CUST-API-02 are VERIFIED on the US development project. CUST-UI-01 is VERIFIED on physical Android (create form). CUST-UI-02 is IMPLEMENTED (awaiting physical Android verification). S19 is not fully VERIFIED. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -852,7 +852,7 @@ Integration tests with two workspaces and mixed archived/active rows.
 
 Customer List
 
-**Status: PENDING**
+**Status: IMPLEMENTED** (2026-09-20) — awaiting physical Android verification. Do not mark VERIFIED until empty/populated/search/default-active evidence exists on device.
 
 ### PRD IDs
 
@@ -923,6 +923,13 @@ Owner can find and open the create flow from a real list of server customers.
 ### Evidence required before VERIFIED
 
 Screenshots/recordings of empty, populated, search, archived-hidden default. Proof archived customers are absent from the default list.
+
+### Evidence (CUST-UI-02) — automated only so far
+
+- Route `/(app)/customers` with owner-shell **Customers** entry; **Add customer** preserved.
+- `listCustomers` / `buildListCustomersPath` on existing mobile API client (no `workspace_id`).
+- Controller tests: initial `state=active&limit=25`, loading vs empty, row fields, archived label, empty copies, debounced search + stale response guard, Active/Archived/All, filter resets cursor, Load more append + duplicate block, network error + Retry, transient errors do not require sign-out, refresh after create.
+- Physical Android pass still required before VERIFIED.
 
 ---
 
@@ -1852,10 +1859,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 remains **PENDING**; S19 is not fully VERIFIED.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **IMPLEMENTED** (awaiting physical Android verification); S19 is not fully VERIFIED.
 3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-UI-02 until authorized.
+Do not mark CUST-UI-02 VERIFIED until physical Android evidence is recorded. Do not start Customer Detail until authorized.

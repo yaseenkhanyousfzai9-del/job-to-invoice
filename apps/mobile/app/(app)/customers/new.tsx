@@ -97,7 +97,7 @@ export default function NewCustomerScreen() {
       setDuplicateNames([]);
       setDraft(emptyCustomerFormDraft());
       router.replace({
-        pathname: "/(app)",
+        pathname: "/(app)/customers/index",
         params: { customerCreated: "1" },
       });
     } finally {

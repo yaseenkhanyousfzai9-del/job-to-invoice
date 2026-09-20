@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "tsx --test src/lib/auth-errors.test.ts src/lib/verify-auth-flow.test.ts src/lib/otp-send-flow.test.ts src/lib/otp-request-state.test.ts src/lib/otp-verify-gate.test.ts src/lib/otp-auth-client.test.ts src/lib/verify-screen-submit.test.ts src/lib/bootstrap-retry.test.ts src/lib/supabase-auth-client.test.ts src/lib/clientUuid.test.ts src/lib/sessionBootstrap.test.ts src/features/setup/setupContactForm.test.ts src/features/setup/setupDefaultsForm.test.ts src/features/customers/createCustomerForm.test.ts"
+    "test": "tsx --test src/lib/auth-errors.test.ts src/lib/verify-auth-flow.test.ts src/lib/otp-send-flow.test.ts src/lib/otp-request-state.test.ts src/lib/otp-verify-gate.test.ts src/lib/otp-auth-client.test.ts src/lib/verify-screen-submit.test.ts src/lib/bootstrap-retry.test.ts src/lib/supabase-auth-client.test.ts src/lib/clientUuid.test.ts src/lib/sessionBootstrap.test.ts src/features/setup/setupContactForm.test.ts src/features/setup/setupDefaultsForm.test.ts src/features/customers/createCustomerForm.test.ts src/features/customers/customersList.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",

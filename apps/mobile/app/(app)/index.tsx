@@ -13,11 +13,11 @@ export default function OwnerShellScreen() {
       <Title>Job to Invoice</Title>
       <Body>{`Signed in as ${auth.me?.user.display_email ?? "owner"}.`}</Body>
       <Secondary>
-        Jobs, quotes, and invoices are not implemented yet. You can add a customer from this shell.
+        Jobs, quotes, and invoices are not implemented yet. Open Customers to search and add
+        contacts.
       </Secondary>
-      {created ? (
-        <Body>Customer created.</Body>
-      ) : null}
+      {created ? <Body>Customer created.</Body> : null}
+      <PrimaryButton label="Customers" onPress={() => router.push("/(app)/customers/index")} />
       <PrimaryButton label="Add customer" onPress={() => router.push("/(app)/customers/new")} />
       <PrimaryButton label="Sign out" onPress={() => void auth.signOut()} />
     </Screen>
