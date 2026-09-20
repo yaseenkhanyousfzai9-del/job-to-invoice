@@ -1,5 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Body, PrimaryButton, Screen, Secondary, Title } from "../../src/components/ui";
+import {
+  CUSTOMERS_LIST_HREF,
+  CUSTOMERS_NEW_HREF,
+} from "../../src/features/customers/customerRoutes";
 import { useAuth } from "../../src/providers/AuthProvider";
 
 export default function OwnerShellScreen() {
@@ -17,8 +21,8 @@ export default function OwnerShellScreen() {
         contacts.
       </Secondary>
       {created ? <Body>Customer created.</Body> : null}
-      <PrimaryButton label="Customers" onPress={() => router.push("/(app)/customers/index")} />
-      <PrimaryButton label="Add customer" onPress={() => router.push("/(app)/customers/new")} />
+      <PrimaryButton label="Customers" onPress={() => router.push(CUSTOMERS_LIST_HREF)} />
+      <PrimaryButton label="Add customer" onPress={() => router.push(CUSTOMERS_NEW_HREF)} />
       <PrimaryButton label="Sign out" onPress={() => void auth.signOut()} />
     </Screen>
   );

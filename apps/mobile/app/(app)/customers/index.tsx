@@ -26,6 +26,7 @@ import {
   showCustomersInitialLoading,
   type CustomersListSnapshot,
 } from "../../../src/features/customers/customersList";
+import { CUSTOMERS_NEW_HREF } from "../../../src/features/customers/customerRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
@@ -107,7 +108,7 @@ export default function CustomersListScreen() {
       <Title>Customers</Title>
       <PrimaryButton
         label="Add customer"
-        onPress={() => router.push("/(app)/customers/new")}
+        onPress={() => router.push(CUSTOMERS_NEW_HREF)}
       />
       <Field
         label="Search customers"
@@ -143,7 +144,7 @@ export default function CustomersListScreen() {
 
       <CustomersListBody
         snapshot={snapshot}
-        onAddCustomer={() => router.push("/(app)/customers/new")}
+        onAddCustomer={() => router.push(CUSTOMERS_NEW_HREF)}
         onLoadMore={() => void onLoadMore()}
       />
     </Screen>

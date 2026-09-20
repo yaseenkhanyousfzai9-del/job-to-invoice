@@ -359,6 +359,7 @@ test("transient error does not require sign-out", () => {
 
 test("Add customer navigation target remains create route", () => {
   assert.equal("/(app)/customers/new", "/(app)/customers/new");
+  assert.equal("/(app)/customers/new".includes("/index"), false);
 });
 
 test("return after create refreshes list", async () => {

@@ -18,6 +18,7 @@ import {
   submitCreateCustomer,
   type CustomerFormDraft,
 } from "../../../src/features/customers/createCustomerForm";
+import { customersListHrefWithCreatedFlag } from "../../../src/features/customers/customerRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
@@ -96,10 +97,7 @@ export default function NewCustomerScreen() {
       setDuplicateMessage(null);
       setDuplicateNames([]);
       setDraft(emptyCustomerFormDraft());
-      router.replace({
-        pathname: "/(app)/customers/index",
-        params: { customerCreated: "1" },
-      });
+      router.replace(customersListHrefWithCreatedFlag());
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
