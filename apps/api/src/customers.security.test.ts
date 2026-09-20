@@ -93,6 +93,7 @@ async function cleanupTenant(
   await sql.begin(async (tx) => {
     await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
     await tx`select set_config('app.workspace_id', ${workspaceId}, true)`;
+    await tx`delete from app.jobs where workspace_id = ${workspaceId}::uuid`;
     await tx`delete from app.customers where workspace_id = ${workspaceId}::uuid`;
     await tx`delete from app.memberships where id = ${membershipId}::uuid`;
     await tx`delete from app.workspaces where id = ${workspaceId}::uuid`;

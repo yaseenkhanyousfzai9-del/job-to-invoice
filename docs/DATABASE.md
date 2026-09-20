@@ -1,6 +1,6 @@
 # Database
 
-Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. Migrations `0001`–`0003` applied. `app.customers` exists with FORCE RLS, non-unique `(workspace_id, normalized_email)` index, and live `customers.security.test.ts` evidence under `app_api_login`. Runtime `DATABASE_URL_API` uses session pooler as `app_api_login` (not superuser, not BYPASSRLS). Jobs / Customer HTTP routes are not in these migrations. The Tokyo project is DO NOT USE.
+Status: Development project **Job to Invoice - Development US** (`us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`) is linked. Migrations `0001`–`0004` applied. `app.customers` and `app.jobs` exist with FORCE RLS. Jobs composite FK `(workspace_id, customer_id) → customers(workspace_id, id)` ON DELETE RESTRICT (`R-CUS-31`). Runtime `DATABASE_URL_API` uses session pooler as `app_api_login` (not superuser, not BYPASSRLS). The Tokyo project is DO NOT USE.
 
 Authority: PRD section 20 (DB01–DB05), CUS01, CUS02, AUTHZ01. Schema details for later financial tables remain in the PRD; this file specifies tables required for Customer and its minimum prerequisites.
 
@@ -213,7 +213,9 @@ Customer commands must not increment these counters.
 
 **Immutable.** `id`, `workspace_id`, `created_at` (ordinary CRUD). Published document copies of this data live elsewhere (see snapshot section).
 
-**Evidence (CUST-DB-01, 2026-09-18):** Migration `0003_customers.sql` applied to `vlpjaamdjtmtqtpwbhzq`. Live schema: columns + `UNIQUE(workspace_id,id)` + `created_by` + checks (name 1–120 trimmed, email ≤254, email/normalized pair, phone ≤20, version ≥1). Indexes: list `(workspace_id, updated_at DESC, id DESC)`, non-unique `(workspace_id, normalized_email)`, partial active list. Policy `customers_tenant` uses `app.workspace_id` GUC. `customers.security.test.ts` covers no-context, own/cross insert/select/update/delete, workspace reassignment blocked, duplicate normalized email allowed, archive persistence, version default, pooled non-leak. Jobs FK (`R-CUS-31`) deferred — not created in this slice.
+**Evidence (CUST-DB-01, 2026-09-18):** Migration `0003_customers.sql` applied to `vlpjaamdjtmtqtpwbhzq`. Live schema: columns + `UNIQUE(workspace_id,id)` + `created_by` + checks (name 1–120 trimmed, email ≤254, email/normalized pair, phone ≤20, version ≥1). Indexes: list `(workspace_id, updated_at DESC, id DESC)`, non-unique `(workspace_id, normalized_email)`, partial active list. Policy `customers_tenant` uses `app.workspace_id` GUC. `customers.security.test.ts` covers no-context, own/cross insert/select/update/delete, workspace reassignment blocked, duplicate normalized email allowed, archive persistence, version default, pooled non-leak.
+
+**Evidence (R-CUS-31 / R-CUS-PRE-05 jobs table, 2026-09-20):** Migration `0004_jobs.sql` applied to `vlpjaamdjtmtqtpwbhzq`. `app.jobs` with documented header columns, `UNIQUE(workspace_id,id)`, composite FK to customers **RESTRICT**, list/lifecycle/customer indexes, FORCE RLS + `jobs_tenant`. Live `jobs.security.test.ts` covers same-workspace insert, cross-workspace FK reject, RLS isolation, referenced customer delete blocked. No Jobs HTTP routes in this slice.
 
 ---
 

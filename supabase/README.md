@@ -6,8 +6,10 @@ Current migrations:
 
 - `0001_auth_workspace.sql` — `app` schema, `app_users`, `workspaces`, `memberships`, `job_allowances`, `idempotency_records`, FORCE RLS, `app_api` privilege role
 - `0002_app_api_login.sql` — `app_api_login` runtime LOGIN role (no password in git)
+- `0003_customers.sql` — `app.customers` + FORCE RLS
+- `0004_jobs.sql` — `app.jobs` + composite customer FK (RESTRICT) + FORCE RLS
 
-Customer, job, quote, and invoice tables are **not** created here.
+Quote and invoice tables are **not** created here.
 
 Approved hosted development project: **Job to Invoice - Development US**, region `us-east-1`, ref `vlpjaamdjtmtqtpwbhzq`. The Tokyo `ap-northeast-1` project is DO NOT USE. Do not link it. Do not apply migrations to it.
 
