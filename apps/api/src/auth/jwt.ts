@@ -79,6 +79,14 @@ export function createConfiguredJwtVerifier(options: {
   const audience = options.audience;
   const jwksUrl = options.jwksUrl;
   if (!jwksUrl || !issuer || !audience) {
+    if (process.env["APP_ENV"] !== "production") {
+      console.warn("[auth-config]", {
+        jwt_config_incomplete: true,
+        issuer_configured: Boolean(issuer),
+        audience_configured: Boolean(audience),
+        jwks_configured: Boolean(jwksUrl),
+      });
+    }
     return async () => {
       throw unauthenticated();
     };

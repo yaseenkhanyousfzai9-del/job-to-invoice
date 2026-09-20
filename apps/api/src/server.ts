@@ -1,3 +1,4 @@
+import "./load-dev-env.ts";
 import { buildApp } from "./app.ts";
 import { createConfiguredJwtVerifier } from "./auth/jwt.ts";
 import { loadApiConfig } from "./config.ts";

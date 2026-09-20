@@ -363,13 +363,27 @@ export function AuthProvider(props: { children: ReactNode }) {
   }, [latestOtpRequest, otpGeneration, pendingEmail, verifyAttemptGate, verifyFlight]);
 
   const retryBootstrap = useCallback(async () => {
-    if (!accessToken) {
+    const persistentClient = isAuthProviderConfigured() ? getSupabaseClient() : null;
+    let token = accessToken;
+
+    if (persistentClient) {
+      const { data } = await persistentClient.auth.getSession();
+      if (data.session?.access_token) {
+        token = data.session.access_token;
+        setAccessToken(token);
+      }
+    }
+
+    if (!token) {
+      setError("Sign in to continue.");
+      setBootstrapRetryable(false);
       return false;
     }
+
     authFlowLog("bootstrap_started", { retry: true });
     setError(null);
     try {
-      const nextMe = await fetchMe(accessToken);
+      const nextMe = await fetchMe(token);
       setMe(nextMe);
       setBootstrapRetryable(false);
       authFlowLog("bootstrap_success", { retry: true });
@@ -377,18 +391,7 @@ export function AuthProvider(props: { children: ReactNode }) {
     } catch (cause) {
       const status = cause instanceof DomainApiError ? cause.api.status : null;
       authFlowLog("bootstrap_status", { status, retry: true });
-      if (cause instanceof DomainApiError && cause.api.status === 401) {
-        if (isAuthProviderConfigured()) {
-          const persistentClient = getSupabaseClient();
-          await persistentClient.auth.signOut();
-        }
-        setAccessToken(null);
-        setMe(null);
-        setPendingEmail(null);
-        setBootstrapRetryable(false);
-        setError("Sign in to continue.");
-        return false;
-      }
+      // Keep persistent session on 401/5xx during retry — do not force a new OTP.
       setBootstrapRetryable(true);
       setError(BOOTSTRAP_FAILED_MESSAGE);
       return false;

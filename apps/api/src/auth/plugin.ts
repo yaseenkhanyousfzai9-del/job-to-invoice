@@ -22,6 +22,7 @@ export function registerOwnerAuth(
     if (!request.url.startsWith("/v1/")) {
       return;
     }
+
     const token = await deps.jwtVerifier(request.headers.authorization);
     request.owner = await loadOwnerContext(deps.store, token);
   });
