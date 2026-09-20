@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform } from "react-native";
-import { useRouter } from "expo-router";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from "react-native";
+import { Redirect, useRouter } from "expo-router";
 import { validateEmail } from "@job-to-invoice/domain";
 import {
   Body,
@@ -12,13 +12,34 @@ import {
   Title,
 } from "../src/components/ui";
 import { useAuth } from "../src/providers/AuthProvider";
+import { colors } from "../src/theme/tokens";
 
 export default function SignInScreen() {
   const router = useRouter();
   const auth = useAuth();
-  const [email, setEmail] = useState(auth.pendingEmail ?? "");
+  const [email, setEmail] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const submitGuard = useRef(false);
+
+  if (auth.loading) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Restoring session" />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (auth.navigation === "setup") {
+    return <Redirect href="/setup" />;
+  }
+  if (auth.navigation === "app") {
+    return <Redirect href="/(app)" />;
+  }
+  if (auth.navigation === "suspended") {
+    return <Redirect href="/suspended" />;
+  }
 
   async function onSubmit() {
     if (submitGuard.current || auth.sending) {

@@ -16,7 +16,10 @@ export type SessionBootstrapResult =
       me: MeData;
       navigation: "setup" | "app" | "suspended" | "deleting";
     }
-  | { kind: "signed_out_401" }
+  /**
+   * Persistent session exists but /v1/me failed.
+   * Session MUST be kept — never sign out for API/network/401 during cold start.
+   */
   | { kind: "bootstrap_failed"; accessToken: string; message: string }
   | { kind: "session_error"; message: string };
 
@@ -40,11 +43,16 @@ export async function withTimeout<T>(
   }
 }
 
+/**
+ * Cold-start / process-restart bootstrap.
+ * Never calls signOut — transient API errors and even /v1/me 401 keep the persisted session.
+ */
 export async function runSessionBootstrap(options: {
   configured: boolean;
   getSession: () => Promise<{ session: { access_token: string } | null } | null>;
   fetchMe: (accessToken: string) => Promise<MeData>;
-  signOut: () => Promise<void>;
+  /** @deprecated Ignored. Kept optional so callers/tests do not need a breaking rename. */
+  signOut?: () => Promise<void>;
   sessionTimeoutMs?: number;
 }): Promise<SessionBootstrapResult> {
   if (!options.configured) {
@@ -82,9 +90,14 @@ export async function runSessionBootstrap(options: {
         message: BOOTSTRAP_FAILED_MESSAGE,
       };
     } catch (cause) {
-      if (cause instanceof DomainApiError && cause.api.status === 401) {
-        await options.signOut();
-        return { kind: "signed_out_401" };
+      // Keep persisted session on 401, 5xx, and network — match retryBootstrap policy.
+      void cause;
+      if (cause instanceof DomainApiError) {
+        return {
+          kind: "bootstrap_failed",
+          accessToken,
+          message: BOOTSTRAP_FAILED_MESSAGE,
+        };
       }
       return {
         kind: "bootstrap_failed",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { maskEmail } from "@job-to-invoice/domain";
 import {
@@ -15,21 +15,17 @@ import {
 import { resolveCanonicalVerifyEmail } from "../src/lib/otp-request-state";
 import { createVerifyScreenSubmitPolicy } from "../src/lib/verify-screen-submit";
 import { useAuth } from "../src/providers/AuthProvider";
+import { colors } from "../src/theme/tokens";
 
 export default function VerifyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string }>();
   const auth = useAuth();
-  const resolved = resolveCanonicalVerifyEmail({
-    pendingEmail: auth.pendingEmail,
-    routeEmail: params.email,
-  });
-  const email = resolved.email;
   const [code, setCode] = useState("");
   const [now, setNow] = useState(Date.now());
   const submitPolicy = useRef(createVerifyScreenSubmitPolicy()).current;
   const resendGuard = useRef(false);
-  const lastClearedGeneration = useRef(0);
+  const lastClearedEpoch = useRef(auth.otpInputEpoch);
 
   useEffect(() => {
     // Countdown UI only — must never call verifyCode / verifyOtp.
@@ -38,14 +34,23 @@ export default function VerifyScreen() {
   }, []);
 
   useEffect(() => {
-    if (auth.otpGeneration > 0 && auth.otpGeneration !== lastClearedGeneration.current) {
-      lastClearedGeneration.current = auth.otpGeneration;
+    // Any successful OTP send (or remount epoch bump) clears stale digits + verify errors.
+    if (auth.otpInputEpoch !== lastClearedEpoch.current) {
+      lastClearedEpoch.current = auth.otpInputEpoch;
       setCode("");
       submitPolicy.clearForNewGeneration(auth.otpGeneration);
     }
-  }, [auth.otpGeneration, submitPolicy]);
+  }, [auth.otpInputEpoch, auth.otpGeneration, submitPolicy]);
 
-  // No mount/effect auto-verify. Remount with a filled code must not verify.
+  if (auth.loading) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Restoring session" />
+        </View>
+      </Screen>
+    );
+  }
 
   if (auth.navigation === "setup") {
     return <Redirect href="/setup" />;
@@ -53,6 +58,17 @@ export default function VerifyScreen() {
   if (auth.navigation === "app") {
     return <Redirect href="/(app)" />;
   }
+
+  // Cold start must not revive an obsolete /verify route from Expo Router state.
+  if (!auth.hasActiveOtpTransaction) {
+    return <Redirect href="/sign-in" />;
+  }
+
+  const resolved = resolveCanonicalVerifyEmail({
+    pendingEmail: auth.pendingEmail,
+    routeEmail: params.email,
+  });
+  const email = resolved.email;
   if (!email) {
     return <Redirect href="/sign-in" />;
   }
@@ -89,7 +105,10 @@ export default function VerifyScreen() {
     }
     resendGuard.current = true;
     try {
-      await auth.sendCode(email);
+      const ok = await auth.sendCode(email);
+      if (ok) {
+        setCode("");
+      }
     } finally {
       resendGuard.current = false;
     }

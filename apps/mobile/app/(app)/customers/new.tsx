@@ -83,7 +83,7 @@ export default function NewCustomerScreen() {
       }
       if (result.kind === "unauthenticated") {
         setFormError(result.message);
-        await auth.signOut();
+        await auth.signOut({ source: "401", reason: "create_customer_unauthenticated" });
         return;
       }
       if (result.kind === "network" || result.kind === "error") {

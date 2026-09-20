@@ -11,6 +11,13 @@ import {
 import type { MeData } from "@job-to-invoice/domain";
 import { resolveOwnerNavigation, validateEmail, type OwnerNavigation } from "@job-to-invoice/domain";
 import { DomainApiError, fetchMe } from "../lib/api";
+import {
+  authEventTrace,
+  authSignOutTrace,
+  isAppSignOutInProgress,
+  withAppSignOutFlag,
+  type SignOutSource,
+} from "../lib/auth-diagnostics";
 import { GENERIC_CODE_SENT, mapProviderAuthError } from "../lib/auth-errors";
 import { isAuthProviderConfigured } from "../lib/config";
 import { getOtpAuthClient } from "../lib/otp-auth-client";
@@ -44,12 +51,16 @@ type AuthContextValue = {
   sending: boolean;
   verifying: boolean;
   otpGeneration: number;
+  /** Bumps when a new OTP send succeeds — Verify screen must clear the code field. */
+  otpInputEpoch: number;
   bootstrapRetryable: boolean;
+  /** True only for an in-memory OTP transaction this process; never restored after cold start. */
+  hasActiveOtpTransaction: boolean;
   sendCode: (email: string) => Promise<boolean>;
   verifyCode: (routeEmailHint: string | undefined, code: string) => Promise<boolean>;
   retryBootstrap: () => Promise<boolean>;
   refreshMe: () => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: (opts?: { source?: SignOutSource; reason?: string }) => Promise<void>;
   setPendingEmail: (email: string | null) => void;
   clearError: () => void;
   /** Unlocks per-generation verify after the user intentionally edits the code. */
@@ -93,6 +104,7 @@ export function AuthProvider(props: { children: ReactNode }) {
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [otpGeneration, setOtpGeneration] = useState(0);
+  const [otpInputEpoch, setOtpInputEpoch] = useState(0);
   const [bootstrapRetryable, setBootstrapRetryable] = useState(false);
   const verifyFlight = useRef(createVerifySingleFlight()).current;
   const sendFlight = useRef(createSendSingleFlight()).current;
@@ -111,13 +123,10 @@ export function AuthProvider(props: { children: ReactNode }) {
           return data;
         },
         fetchMe,
-        signOut: async () => {
-          const persistentClient = getSupabaseClient();
-          await persistentClient.auth.signOut();
-        },
+        // Cold start must never call Supabase signOut — even on /v1/me 401.
       });
 
-      if (result.kind === "unconfigured" || result.kind === "no_session" || result.kind === "signed_out_401") {
+      if (result.kind === "unconfigured" || result.kind === "no_session") {
         setAccessToken(null);
         setMe(null);
         setBootstrapRetryable(false);
@@ -125,9 +134,10 @@ export function AuthProvider(props: { children: ReactNode }) {
         return;
       }
       if (result.kind === "session_error") {
+        // Keep SecureStore intact; clear in-memory only and allow Retry via reload.
         setAccessToken(null);
         setMe(null);
-        setBootstrapRetryable(false);
+        setBootstrapRetryable(true);
         setError(result.message);
         return;
       }
@@ -150,6 +160,24 @@ export function AuthProvider(props: { children: ReactNode }) {
   useEffect(() => {
     void loadFromSession();
   }, [loadFromSession]);
+
+  useEffect(() => {
+    if (!isAuthProviderConfigured()) {
+      return;
+    }
+    const persistentClient = getSupabaseClient();
+    const { data } = persistentClient.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        authEventTrace({
+          event: "SIGNED_OUT",
+          app_signout_in_progress: isAppSignOutInProgress(),
+        });
+      }
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, []);
 
   const sendCode = useCallback(async (email: string) => {
     const parsed = validateEmail(email);
@@ -207,11 +235,13 @@ export function AuthProvider(props: { children: ReactNode }) {
       setCodeSentMessage(GENERIC_CODE_SENT);
       setCooldownUntil(Date.now() + 60_000);
       setOtpGeneration(result.generation);
+      setOtpInputEpoch((n) => n + 1);
       verifyAttemptGate.clearForNewGeneration(result.generation);
       setError(null);
       authSendStateLog({
         generation: result.generation,
         canonical_email_updated: true,
+        otp_input_cleared: true,
       });
       return true;
     } catch (cause) {
@@ -405,20 +435,34 @@ export function AuthProvider(props: { children: ReactNode }) {
     setMe(await fetchMe(accessToken));
   }, [accessToken]);
 
-  const signOut = useCallback(async () => {
-    if (isAuthProviderConfigured()) {
-      const persistentClient = getSupabaseClient();
-      await persistentClient.auth.signOut();
-    }
+  const signOut = useCallback(async (opts?: { source?: SignOutSource; reason?: string }) => {
+    const source = opts?.source ?? "explicit_user";
+    authSignOutTrace({
+      source,
+      reason: opts?.reason ?? "user_pressed_sign_out",
+      explicit_user_action: source === "explicit_user",
+      caller: "AuthProvider.signOut",
+    });
+    await withAppSignOutFlag(async () => {
+      if (isAuthProviderConfigured()) {
+        const persistentClient = getSupabaseClient();
+        await persistentClient.auth.signOut();
+      }
+    });
     setAccessToken(null);
     setMe(null);
     setPendingEmail(null);
     setError(null);
     setBootstrapRetryable(false);
+    setCodeSentMessage(null);
+    setCooldownUntil(null);
     latestOtpRequest.clear();
     setOtpGeneration(0);
+    setOtpInputEpoch((n) => n + 1);
     verifyAttemptGate.clearForUserCodeEdit();
   }, [latestOtpRequest, verifyAttemptGate]);
+
+  const hasActiveOtpTransaction = otpGeneration > 0 && Boolean(pendingEmail);
 
   const navigation = resolveOwnerNavigation({
     hasSession: Boolean(accessToken),
@@ -438,7 +482,9 @@ export function AuthProvider(props: { children: ReactNode }) {
       sending,
       verifying,
       otpGeneration,
+      otpInputEpoch,
       bootstrapRetryable,
+      hasActiveOtpTransaction,
       sendCode,
       verifyCode,
       retryBootstrap,
@@ -463,7 +509,9 @@ export function AuthProvider(props: { children: ReactNode }) {
       sending,
       verifying,
       otpGeneration,
+      otpInputEpoch,
       bootstrapRetryable,
+      hasActiveOtpTransaction,
       sendCode,
       verifyCode,
       retryBootstrap,

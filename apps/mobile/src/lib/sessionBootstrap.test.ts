@@ -106,17 +106,28 @@ test("session restore timeout becomes recoverable session_error", async () => {
   assert.equal(result.kind, "session_error");
 });
 
-test("unconfigured auth ends without session work", async () => {
-  let called = false;
+test("/v1/me 401 keeps session and does not sign out", async () => {
+  let signOutCalls = 0;
   const result = await runSessionBootstrap({
-    configured: false,
-    getSession: async () => {
-      called = true;
-      return { session: null };
+    configured: true,
+    getSession: async () => ({ session: { access_token: "tok" } }),
+    fetchMe: async () => {
+      throw new DomainApiError({
+        code: "UNAUTHENTICATED",
+        message: "Sign in to continue.",
+        field_errors: {},
+        retryable: false,
+        status: 401,
+      });
     },
-    fetchMe: async () => me("ready"),
-    signOut: async () => undefined,
+    signOut: async () => {
+      signOutCalls += 1;
+    },
   });
-  assert.equal(result.kind, "unconfigured");
-  assert.equal(called, false);
+  assert.equal(result.kind, "bootstrap_failed");
+  assert.equal(signOutCalls, 0);
+  if (result.kind === "bootstrap_failed") {
+    assert.equal(result.accessToken, "tok");
+    assert.equal(result.message, BOOTSTRAP_FAILED_MESSAGE);
+  }
 });

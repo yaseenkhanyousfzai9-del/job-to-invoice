@@ -37,6 +37,9 @@ test("mobile auth client keeps SecureStore persistence and auto refresh", () => 
   );
   assert.match(supabaseSource, /secureSessionStorage/);
   assert.match(supabaseSource, /buildMobileAuthOptions\(secureSessionStorage\)/);
+  assert.match(supabaseSource, /startAutoRefresh/);
+  assert.match(supabaseSource, /stopAutoRefresh/);
+  assert.match(supabaseSource, /AppState/);
 });
 
 test("verifyOtp path still uses type email with trimmed six-digit token", () => {

@@ -61,7 +61,7 @@ export default function CustomersListScreen() {
           : await controller.bootstrap(auth.accessToken);
         bootstrapped.current = true;
         if (result === "unauthenticated") {
-          await auth.signOut();
+          await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
         }
       })();
     }, [auth, controller]),
@@ -74,7 +74,7 @@ export default function CustomersListScreen() {
     void (async () => {
       const result = await controller.refreshPreservingFilters(auth.accessToken);
       if (result === "unauthenticated") {
-        await auth.signOut();
+        await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
       }
       router.setParams({ customerCreated: undefined });
     })();
@@ -83,21 +83,21 @@ export default function CustomersListScreen() {
   async function onFilter(value: CustomerListState) {
     const result = await controller.setStateFilter(auth.accessToken, value);
     if (result === "unauthenticated") {
-      await auth.signOut();
+      await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
     }
   }
 
   async function onRetry() {
     const result = await controller.retry(auth.accessToken);
     if (result === "unauthenticated") {
-      await auth.signOut();
+      await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
     }
   }
 
   async function onLoadMore() {
     const result = await controller.loadMore(auth.accessToken);
     if (result === "unauthenticated") {
-      await auth.signOut();
+      await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
     }
   }
 
