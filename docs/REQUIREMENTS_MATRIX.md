@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 and **CUST-API-01** are VERIFIED. **CUST-UI-01** is IMPLEMENTED (S07 create form + duplicate confirmation; physical Android exercise still required for VERIFIED). Live owner OTP (QA01/QA02) remains unverified. GET/PATCH/archive/delete and Customers list remain PENDING. CUS01, CUS02, S06, and S19 are not complete overall.
+Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 and **CUST-API-01** are VERIFIED. **CUST-UI-01** is **VERIFIED** (physical Android create form: minimal/email/full-address create, duplicate warning + confirm, required name / invalid phone / partial address validation, double-submit guard, keyboard/scroll, network/API failure retryable error). S07 create path is VERIFIED; S07 archive restore (`R-CUS-16`) remains PENDING. Live owner OTP (QA01/QA02) remains unverified. GET/PATCH/archive/delete and Customers list remain PENDING. CUS01, CUS02, S06, and S19 are not complete overall.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -59,9 +59,9 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
 | R-CUS-12 | S06 | Create Job selects a customer; can open customer creation sheet | S06 | `GET /customers`, `POST /customers`, `POST /jobs` | `job_created` when job exists; no customer PII | Picker + in-sheet create + job bind | PENDING |
-| R-CUS-13 | S06 | Do not force device Contacts permission | S06, S07 | none | none (PRD allowlist) | Permission not requested in customer flows | IMPLEMENTED |
-| R-CUS-14 | S07 | Customer form fields: name, email, optional phone, billing address | S07 | `POST/PATCH /customers` | none (PRD allowlist) | Field contract + validation | IMPLEMENTED |
-| R-CUS-15 | S07 CUS01 DEC-CUST-002 | Duplicate email warning on the form from server 409, not UI-only | S07 | Duplicate-email API confirmation | none (PRD allowlist) | Warning + confirm; retry with new Idempotency-Key | IMPLEMENTED |
+| R-CUS-13 | S06 | Do not force device Contacts permission | S06, S07 | none | none (PRD allowlist) | Permission not requested in customer flows | VERIFIED |
+| R-CUS-14 | S07 | Customer form fields: name, email, optional phone, billing address | S07 | `POST/PATCH /customers` | none (PRD allowlist) | Field contract + validation; physical Android create form | VERIFIED |
+| R-CUS-15 | S07 CUS01 DEC-CUST-002 | Duplicate email warning on the form from server 409, not UI-only | S07 | Duplicate-email API confirmation | none (PRD allowlist) | Warning + confirm; retry with new Idempotency-Key; physical Android | VERIFIED |
 | R-CUS-16 | S07 | Archived customer restore option on the form | S07 | `POST /customers/{id}/archive` `{archived:false}` | none (PRD allowlist) | Restore returns customer to default list/picker | PENDING |
 | R-CUS-17 | S19 | Customers tab: search, list, create | S19 | `GET /customers` search/page | none (PRD allowlist) | Search, pagination, create entry | PENDING |
 | R-CUS-18 | S19 DEC-CUST-001 DEC-CUST-006 | Customer detail shows associated jobs via customer GET plus jobs filter | S19 detail | `GET /v1/customers/{id}` and `GET /v1/jobs?customer_id=` | none (PRD allowlist) | Empty jobs and ≥1 job; foreign customer_id 404 | PENDING |
@@ -73,11 +73,11 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-22 | VAL01 | Customer display name 1–120; trim outer whitespace; reject control characters; preserve Unicode | S07 | Shared domain schema + API 422 | none (PRD allowlist) | Unit + API; QA55 Unicode | IMPLEMENTED |
-| R-CUS-23 | VAL01 | Email max 254; normalize for lookup without provider-specific dot/plus rewriting; preserve original presentation | S07 | `email` + `normalized_email` | none (PRD allowlist) | `a.b+c@gmail.com` not collapsed to gmail-provider rules | IMPLEMENTED |
-| R-CUS-24 | VAL01 | Customer email optional on the record; mandatory later for approval requests; optional for manually shared direct invoices | S07, later S11 | Nullable `email` | none (PRD allowlist) | Create without email succeeds | IMPLEMENTED |
-| R-CUS-25 | VAL01 DEC-CUST-003 | Phone optional; E.164 where parsable; unparsable supplied phone blocks save; no country guessing; no raw override | S07 | Domain phone parser | none (PRD allowlist) | No auto `+1`; invalid 422; omit phone succeeds | IMPLEMENTED |
-| R-CUS-26 | VAL02 | When billing address is present: US line1 ≤150, line2 optional ≤150, city ≤80, two-letter state, ZIP 5 or ZIP+4 | S07 | `billing_address_json` schema | none (PRD allowlist) | Invalid state/ZIP 422; missing address allowed | IMPLEMENTED |
+| R-CUS-22 | VAL01 | Customer display name 1–120; trim outer whitespace; reject control characters; preserve Unicode | S07 | Shared domain schema + API 422 | none (PRD allowlist) | Unit + API; physical Android required-name block | VERIFIED |
+| R-CUS-23 | VAL01 | Email max 254; normalize for lookup without provider-specific dot/plus rewriting; preserve original presentation | S07 | `email` + `normalized_email` | none (PRD allowlist) | `a.b+c@gmail.com` not collapsed to gmail-provider rules | VERIFIED |
+| R-CUS-24 | VAL01 | Customer email optional on the record; mandatory later for approval requests; optional for manually shared direct invoices | S07, later S11 | Nullable `email` | none (PRD allowlist) | Create without email succeeds; physical Android minimal create | VERIFIED |
+| R-CUS-25 | VAL01 DEC-CUST-003 | Phone optional; E.164 where parsable; unparsable supplied phone blocks save; no country guessing; no raw override | S07 | Domain phone parser | none (PRD allowlist) | No auto `+1`; invalid 422; physical Android invalid-phone block | VERIFIED |
+| R-CUS-26 | VAL02 | When billing address is present: US line1 ≤150, line2 optional ≤150, city ≤80, two-letter state, ZIP 5 or ZIP+4 | S07 | `billing_address_json` schema | none (PRD allowlist) | Invalid state/ZIP 422; physical Android partial-address + full-address create | VERIFIED |
 | R-CUS-27 | VAL02 | Billing address is distinct from job site address | S06, S07 | Separate `billing_address_json` vs `jobs.site_address_json` | none (PRD allowlist) | Changing billing does not change site | PENDING |
 | R-CUS-28 | VAL04 / API03 | Constraints enforced client-side for convenience and server-side for enforcement; unknown fields rejected | S07 | API03 reject extra properties | none (PRD allowlist) | Extra field 422; client validation can be bypassed and server still rejects | IMPLEMENTED |
 

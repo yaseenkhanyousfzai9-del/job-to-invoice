@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is IMPLEMENTED (create form). CUST-API-02 (list/search) remains later and is not READY until authorized. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is VERIFIED on physical Android (create form). CUST-API-02 (list/search) remains later and is not READY until authorized. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -666,7 +666,7 @@ API tests against a real database. Proof that confirmation is required, not UI-o
 
 Customer Form
 
-**Status: IMPLEMENTED** (2026-09-19) — create-only S07. Not VERIFIED until physical Android exercise of the flow.
+**Status: VERIFIED** (2026-09-20) — create-only S07 on physical Android (Expo Go). Archive restore remains CUST-UI-05 / `R-CUS-16`.
 
 ### Evidence
 
@@ -676,6 +676,18 @@ Customer Form
 - API: `createCustomer` → `POST /v1/customers` with Bearer + Idempotency-Key
 - Duplicate 409 confirmation UI; confirm uses new Idempotency-Key + `confirm_duplicate_email: true`
 - Automated: `apps/mobile/src/features/customers/createCustomerForm.test.ts`
+- Physical Android (2026-09-20), Metro `exp://192.168.18.14:8081`, API `192.168.18.14:3001`:
+  - form opens from owner shell
+  - minimal Customer creation
+  - Customer creation with email
+  - duplicate email warning + confirmation create
+  - required Name validation
+  - invalid phone validation
+  - partial address validation
+  - full-address Customer creation
+  - double-submit protection
+  - keyboard/scroll usability
+  - network/API failure: API stopped on :3001 while form open → Save Customer → no crash, stayed on New Customer, no create, retryable connection error; API restored → `{"status":"ok"}`
 
 ### PRD IDs
 
@@ -749,7 +761,7 @@ Owner can create a real customer from the form and see server validation, not on
 
 Device or representative runtime recording of create + duplicate warning + Unicode name. No Contacts permission in the flow.
 
----
+**Satisfied** by the 2026-09-20 physical Android pass listed under Evidence (create, duplicate warn/confirm, validation, double-submit, network failure). Unicode name remains covered by domain/API tests; not a blocker for this create-form VERIFIED.
 
 ## CUST-API-02
 
@@ -1829,10 +1841,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **IMPLEMENTED** (create form). CUST-API-02 (list/search) remains later and is not started.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search) remains later and is not started.
 3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-UI-01 or CUST-API-02 until authorized.
+Do not start CUST-API-02 until authorized.
