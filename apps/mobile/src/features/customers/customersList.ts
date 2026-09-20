@@ -177,7 +177,15 @@ export function createCustomersListController(options?: {
   let generation = 0;
   let loadMoreInFlight = false;
   let debounceHandle: { cancel: () => void } | null = null;
+  const pageCache = new Map<
+    string,
+    { items: Customer[]; nextCursor: string | null }
+  >();
   const listeners = new Set<() => void>();
+
+  function cacheKey(stateFilter: CustomerListState, appliedSearch: string | null): string {
+    return `${stateFilter}|${appliedSearch ?? ""}`;
+  }
 
   function emit() {
     for (const listener of listeners) {
@@ -201,12 +209,21 @@ export function createCustomersListController(options?: {
     }
     const gen = ++generation;
     loadMoreInFlight = false;
-    const keepItems = mode === "refresh" ? snapshot.items : [];
-    const keepCursor = mode === "refresh" ? snapshot.nextCursor : null;
-    setSnapshot({
+    const mergedMeta = {
       ...snapshot,
       ...next,
-      phase: keepItems.length === 0 ? "loading" : "ready",
+    };
+    const cached =
+      mode === "reset"
+        ? pageCache.get(cacheKey(mergedMeta.stateFilter, mergedMeta.appliedSearch))
+        : undefined;
+    const keepItems =
+      mode === "refresh" ? snapshot.items : cached ? cached.items : [];
+    const keepCursor =
+      mode === "refresh" ? snapshot.nextCursor : cached ? cached.nextCursor : null;
+    setSnapshot({
+      ...mergedMeta,
+      phase: "loading",
       items: keepItems,
       nextCursor: keepCursor,
       errorMessage: null,
@@ -235,6 +252,10 @@ export function createCustomersListController(options?: {
       if (gen !== generation) {
         return "ok";
       }
+      pageCache.set(cacheKey(snapshot.stateFilter, snapshot.appliedSearch), {
+        items: page.items,
+        nextCursor: page.next_cursor,
+      });
       setSnapshot({
         ...snapshot,
         phase: "ready",
@@ -289,7 +310,9 @@ export function createCustomersListController(options?: {
       if (stateFilter === snapshot.stateFilter && snapshot.phase !== "error") {
         return Promise.resolve("ok");
       }
-      return replaceList(accessToken, { stateFilter }, "reset");
+  // Immediate request — never share search debounce. Prefer cached page for the
+  // new filter so rows are not blanked; never show another filter's rows as current.
+  return replaceList(accessToken, { stateFilter }, "reset");
     },
     setSearchInput(accessToken, value) {
       setSnapshot({
@@ -299,6 +322,7 @@ export function createCustomersListController(options?: {
       if (debounceHandle) {
         debounceHandle.cancel();
       }
+      // Search-only debounce. Filter changes call setStateFilter directly.
       debounceHandle = schedule(() => {
         debounceHandle = null;
         const applied = normalizeListSearch(snapshot.searchInput);
@@ -396,6 +420,7 @@ export function createCustomersListController(options?: {
         debounceHandle = null;
       }
       listeners.clear();
+      pageCache.clear();
       generation += 1;
     },
   };

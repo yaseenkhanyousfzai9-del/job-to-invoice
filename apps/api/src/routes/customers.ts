@@ -8,7 +8,12 @@ import {
   type Customer,
 } from "@job-to-invoice/domain";
 import type { FastifyInstance } from "fastify";
-import { requireActiveOwner, requireOwner } from "../auth/context.ts";
+import {
+  requireActiveOwner,
+  requireOwner,
+  requireVerifiedAccessToken,
+  resolveOwnerInTransaction,
+} from "../auth/context.ts";
 import { hashCanonicalJson, successEnvelope } from "../envelope.ts";
 import type { AuthStore } from "../store/types.ts";
 
@@ -53,21 +58,30 @@ export async function registerCustomersRoute(
   deps: { store: AuthStore },
 ): Promise<void> {
   app.get("/v1/customers", async (request) => {
-    const owner = requireOwner(request);
-    requireActiveOwner(owner);
+    const token = requireVerifiedAccessToken(request);
     const query = parseCustomerListQuery(request.query);
 
-    return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
-      const bundle = await tx.findWorkspaceByOwner(owner.userId);
-      if (!bundle) {
+    let authorized = await deps.store.listCustomersAuthorized(token.subject, query);
+    if (authorized.status === "no_user") {
+      // First authenticated request may need app_users insert; keep AUTHZ01 in one follow-up tx.
+      await deps.store.withOwnerTransaction(token.subject, async (tx) => {
+        await resolveOwnerInTransaction(tx, token, { touchSession: false });
+      });
+      authorized = await deps.store.listCustomersAuthorized(token.subject, query);
+      if (authorized.status === "no_user") {
         return successEnvelope(request.id, { items: [], next_cursor: null });
       }
-      const page = await tx.listCustomers({
-        workspaceId: bundle.workspace.id,
-        query,
-      });
-      return successEnvelope(request.id, page);
+    }
+
+    requireActiveOwner({
+      token,
+      userId: authorized.userId,
+      displayEmail: authorized.displayEmail,
+      status: authorized.accountStatus,
+      bundle: null,
     });
+
+    return successEnvelope(request.id, authorized.page);
   });
 
   app.post("/v1/customers", async (request, reply) => {

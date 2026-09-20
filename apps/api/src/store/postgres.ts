@@ -360,6 +360,156 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
       });
       return result as T;
     },
+    async listCustomersAuthorized(authUserId, query) {
+      return sql.begin(async (tx) => {
+        // Auth GUC must be set before reading RLS-protected app_users.
+        await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
+
+        const owners = await tx<
+          {
+            id: string;
+            display_email: string;
+            status: string;
+            workspace_id: string | null;
+          }[]
+        >`
+          with owner as (
+            select
+              u.id,
+              u.display_email,
+              u.status,
+              w.id as workspace_id
+            from app.app_users u
+            left join app.workspaces w on w.owner_user_id = u.id
+            left join app.memberships m
+              on m.workspace_id = w.id
+              and m.user_id = u.id
+              and m.status = 'active'
+            where u.auth_user_id = ${authUserId}
+            limit 1
+          ),
+          guc as (
+            select set_config(
+              'app.workspace_id',
+              coalesce((select workspace_id::text from owner), ''),
+              true
+            ) as workspace_guc
+          )
+          select owner.id, owner.display_email, owner.status, owner.workspace_id
+          from owner
+          cross join guc
+        `;
+
+        const owner = owners[0];
+        if (!owner) {
+          return { status: "no_user" as const };
+        }
+
+        const accountStatus = asStatus(owner.status);
+        if (!owner.workspace_id) {
+          return {
+            status: "ok" as const,
+            userId: owner.id,
+            displayEmail: owner.display_email,
+            accountStatus,
+            page: { items: [] as Customer[], next_cursor: null },
+          };
+        }
+
+        const workspaceId = owner.workspace_id;
+        const cursor = query.cursor
+          ? decodeCustomerListCursor(query.cursor, {
+              state: query.state,
+              search: query.search,
+            })
+          : null;
+        const searchPattern =
+          query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
+
+        const stateFilter =
+          query.state === "active"
+            ? tx`and archived_at is null`
+            : query.state === "archived"
+              ? tx`and archived_at is not null`
+              : tx``;
+
+        const searchFilter =
+          searchPattern === null
+            ? tx``
+            : tx`and (
+                name ilike ${searchPattern} escape '\\'
+                or coalesce(email, '') ilike ${searchPattern} escape '\\'
+                or coalesce(normalized_email, '') ilike ${searchPattern} escape '\\'
+              )`;
+
+        const cursorFilter =
+          cursor === null
+            ? tx``
+            : tx`and (
+                updated_at < ${cursor.updated_at}::timestamptz
+                or (
+                  updated_at = ${cursor.updated_at}::timestamptz
+                  and id < ${cursor.id}::uuid
+                )
+              )`;
+
+        const rows = await tx<
+          {
+            id: string;
+            name: string;
+            email: string | null;
+            phone: string | null;
+            billing_address: UsAddress | null;
+            archived_at: string | null;
+            version: number;
+            created_at: string;
+            updated_at: string;
+          }[]
+        >`
+          select id, name, email, phone, billing_address_json as billing_address,
+                 archived_at, version, created_at, updated_at
+          from app.customers
+          where workspace_id = ${workspaceId}::uuid
+          ${stateFilter}
+          ${searchFilter}
+          ${cursorFilter}
+          order by updated_at desc, id desc
+          limit ${query.limit + 1}
+        `;
+
+        const hasMore = rows.length > query.limit;
+        const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+        const items: Customer[] = pageRows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          phone: row.phone,
+          billing_address: row.billing_address,
+          archived_at: row.archived_at,
+          version: row.version,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }));
+        const last = items[items.length - 1];
+        const next_cursor =
+          hasMore && last
+            ? encodeCustomerListCursor({
+                updated_at: last.updated_at,
+                id: last.id,
+                state: query.state,
+                search: query.search,
+              })
+            : null;
+
+        return {
+          status: "ok" as const,
+          userId: owner.id,
+          displayEmail: owner.display_email,
+          accountStatus,
+          page: { items, next_cursor },
+        };
+      });
+    },
     async close() {
       await sql.end({ timeout: 5 });
     },

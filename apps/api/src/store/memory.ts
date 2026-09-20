@@ -259,6 +259,25 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       );
       return run;
     },
+    async listCustomersAuthorized(authUserId, query) {
+      return store.withOwnerTransaction(authUserId, async (ownerTx) => {
+        const user = await ownerTx.findUserByAuthId(authUserId);
+        if (!user) {
+          return { status: "no_user" as const };
+        }
+        const bundle = await ownerTx.findWorkspaceByOwner(user.id);
+        const page = bundle
+          ? await ownerTx.listCustomers({ workspaceId: bundle.workspace.id, query })
+          : { items: [], next_cursor: null };
+        return {
+          status: "ok" as const,
+          userId: user.id,
+          displayEmail: user.display_email,
+          accountStatus: user.status,
+          page,
+        };
+      });
+    },
   };
 
   return {

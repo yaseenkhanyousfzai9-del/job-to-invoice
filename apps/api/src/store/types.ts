@@ -128,10 +128,28 @@ export type OwnerTx = {
   putIdempotency(record: IdempotencyRecord): Promise<void>;
 };
 
+export type CustomerListAuthorizedResult =
+  | { status: "no_user" }
+  | {
+      status: "ok";
+      userId: string;
+      displayEmail: string;
+      accountStatus: AccountStatus;
+      page: { items: Customer[]; next_cursor: string | null };
+    };
+
 export type AuthStore = {
   withOwnerTransaction<T>(
     authUserId: string,
     fn: (tx: OwnerTx) => Promise<T>,
   ): Promise<T>;
+  /**
+   * Customer list in one DB transaction with minimal round-trips:
+   * resolve user+workspace membership and page customers together (AUTHZ01).
+   */
+  listCustomersAuthorized(
+    authUserId: string,
+    query: CustomerListQuery,
+  ): Promise<CustomerListAuthorizedResult>;
   close?(): Promise<void>;
 };

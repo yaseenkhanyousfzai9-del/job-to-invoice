@@ -65,7 +65,8 @@ export default function CustomersListScreen() {
           await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
         }
       })();
-    }, [auth, controller]),
+      // Depend on accessToken only — whole `auth` object identity must not re-fetch on each render.
+    }, [auth.accessToken, auth.signOut, controller]),
   );
 
   useEffect(() => {
@@ -135,6 +136,13 @@ export default function CustomersListScreen() {
             </Pressable>
           );
         })}
+        {snapshot.phase === "loading" && snapshot.items.length > 0 ? (
+          <ActivityIndicator
+            color={colors.primary}
+            accessibilityLabel="Refreshing customers"
+            style={styles.filterSpinner}
+          />
+        ) : null}
       </View>
 
       <ErrorBanner
@@ -225,6 +233,10 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     gap: 8,
+    alignItems: "center",
+  },
+  filterSpinner: {
+    marginLeft: 4,
   },
   filterChip: {
     minHeight: layout.minTouchTarget,

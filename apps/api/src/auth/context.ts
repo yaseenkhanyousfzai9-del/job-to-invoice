@@ -10,7 +10,7 @@ import {
 } from "@job-to-invoice/domain";
 import type { FastifyRequest } from "fastify";
 import type { VerifiedAccessToken } from "./jwt.ts";
-import type { AuthStore, WorkspaceBundle } from "../store/types.ts";
+import type { AuthStore, OwnerTx, WorkspaceBundle } from "../store/types.ts";
 
 export type OwnerContext = {
   token: VerifiedAccessToken;
@@ -20,50 +20,60 @@ export type OwnerContext = {
   bundle: WorkspaceBundle | null;
 };
 
-export async function loadOwnerContext(
-  store: AuthStore,
+/** Resolve owner + membership inside an already-open owner transaction (AUTHZ01). */
+export async function resolveOwnerInTransaction(
+  tx: OwnerTx,
   token: VerifiedAccessToken,
+  options?: { touchSession?: boolean },
 ): Promise<OwnerContext> {
   const email = validateEmail(token.email);
   if (email.error) {
     throw unauthenticated();
   }
+  const touchSession = options?.touchSession !== false;
+  const now = new Date().toISOString();
+  let user = await tx.findUserByAuthId(token.subject);
+  if (!user) {
+    user = await tx.insertUser({
+      id: crypto.randomUUID(),
+      authUserId: token.subject,
+      displayEmail: email.display,
+      normalizedEmail: email.normalized,
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
+      now,
+    });
+  } else if (touchSession) {
+    user = await tx.touchAuthentication(
+      user.id,
+      email.display,
+      normalizeEmail(email.display),
+      now,
+    );
+  }
 
-  return store.withOwnerTransaction(token.subject, async (tx) => {
-    const now = new Date().toISOString();
-    let user = await tx.findUserByAuthId(token.subject);
-    if (!user) {
-      user = await tx.insertUser({
-        id: crypto.randomUUID(),
-        authUserId: token.subject,
-        displayEmail: email.display,
-        normalizedEmail: email.normalized,
-        termsVersion: CURRENT_TERMS_VERSION,
-        privacyVersion: CURRENT_PRIVACY_VERSION,
-        now,
-      });
-    } else {
-      user = await tx.touchAuthentication(
-        user.id,
-        email.display,
-        normalizeEmail(email.display),
-        now,
-      );
-    }
+  if (user.status === "deleted") {
+    throw unauthenticated();
+  }
 
-    if (user.status === "deleted") {
-      throw unauthenticated();
-    }
+  const bundle = await tx.findWorkspaceByOwner(user.id);
+  return {
+    token,
+    userId: user.id,
+    displayEmail: user.display_email,
+    status: user.status,
+    bundle,
+  };
+}
 
-    const bundle = await tx.findWorkspaceByOwner(user.id);
-    return {
-      token,
-      userId: user.id,
-      displayEmail: user.display_email,
-      status: user.status,
-      bundle,
-    };
-  });
+export async function loadOwnerContext(
+  store: AuthStore,
+  token: VerifiedAccessToken,
+  options?: { touchSession?: boolean },
+): Promise<OwnerContext> {
+  return store.withOwnerTransaction(token.subject, async (tx) =>
+    resolveOwnerInTransaction(tx, token, options),
+  );
 }
 
 export function requireOwner(request: FastifyRequest): OwnerContext {
@@ -71,6 +81,13 @@ export function requireOwner(request: FastifyRequest): OwnerContext {
     throw unauthenticated();
   }
   return request.owner;
+}
+
+export function requireVerifiedAccessToken(request: FastifyRequest): VerifiedAccessToken {
+  if (!request.verifiedAccessToken) {
+    throw unauthenticated();
+  }
+  return request.verifiedAccessToken;
 }
 
 export function requireActiveOwner(owner: OwnerContext): void {

@@ -357,9 +357,177 @@ test("transient error does not require sign-out", () => {
   );
 });
 
-test("Add customer navigation target remains create route", () => {
-  assert.equal("/(app)/customers/new", "/(app)/customers/new");
-  assert.equal("/(app)/customers/new".includes("/index"), false);
+test("search still debounces around the intended delay", async () => {
+  const calls: string[] = [];
+  const pending: Array<() => void> = [];
+  const controller = createCustomersListController({
+    debounceMs: 400,
+    schedule: (fn, ms) => {
+      assert.equal(ms, 400);
+      pending.push(fn);
+      return { cancel: () => undefined };
+    },
+    listCustomers: async (_token, params) => {
+      calls.push(buildListCustomersPath(params));
+      return { items: [], next_cursor: null };
+    },
+  });
+  await controller.bootstrap("token");
+  const before = calls.length;
+  controller.setSearchInput("token", "Jo");
+  assert.equal(calls.length, before);
+  assert.equal(pending.length, 1);
+  pending[0]!();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.ok(calls.at(-1)?.includes("search=Jo"));
+});
+
+test("filter change does NOT wait for search debounce and starts immediately", async () => {
+  const callStates: string[] = [];
+  let pendingSearch: (() => void) | null = null;
+  const controller = createCustomersListController({
+    debounceMs: 400,
+    schedule: (fn) => {
+      pendingSearch = fn;
+      return { cancel: () => undefined };
+    },
+    listCustomers: async (_token, params) => {
+      callStates.push(params?.state ?? "active");
+      return { items: [], next_cursor: null };
+    },
+  });
+  await controller.bootstrap("token");
+  controller.setSearchInput("token", "pending");
+  assert.ok(pendingSearch);
+  // Filter must fire before the debounced search runs.
+  await controller.setStateFilter("token", "archived");
+  assert.ok(callStates.includes("archived"));
+  assert.equal(controller.getSnapshot().stateFilter, "archived");
+});
+
+test("Active → Archived and Archived → All start request without debounce wait", async () => {
+  const order: string[] = [];
+  const controller = createCustomersListController({
+    debounceMs: 10_000,
+    schedule: () => ({ cancel: () => undefined }),
+    listCustomers: async (_token, params) => {
+      order.push(params?.state ?? "active");
+      return {
+        items: [],
+        next_cursor: "cursor-x",
+      };
+    },
+  });
+  await controller.bootstrap("token");
+  await controller.setStateFilter("token", "archived");
+  await controller.setStateFilter("token", "all");
+  assert.deepEqual(order, ["active", "archived", "all"]);
+  assert.equal(controller.getSnapshot().nextCursor, "cursor-x");
+});
+
+test("changing filter still resets pagination cursor on next request", async () => {
+  const paths: string[] = [];
+  const controller = createCustomersListController({
+    listCustomers: async (_token, params) => {
+      paths.push(buildListCustomersPath(params));
+      return {
+        items: [customer({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "One" })],
+        next_cursor: "keep-me",
+      };
+    },
+  });
+  await controller.bootstrap("token");
+  assert.equal(controller.getSnapshot().nextCursor, "keep-me");
+  await controller.setStateFilter("token", "archived");
+  assert.equal(paths.at(-1)?.includes("cursor="), false);
+});
+
+test("stale older filter response cannot overwrite latest filter result", async () => {
+  const slow = deferred<CustomerListPage>();
+  const fast = deferred<CustomerListPage>();
+  const controller = createCustomersListController({
+    listCustomers: async (_token, params) => {
+      if (params?.state === "archived") return slow.promise;
+      if (params?.state === "all") return fast.promise;
+      return { items: [], next_cursor: null };
+    },
+  });
+  await controller.bootstrap("token");
+  const pendingArchived = controller.setStateFilter("token", "archived");
+  const pendingAll = controller.setStateFilter("token", "all");
+  fast.resolve({
+    items: [customer({ id: "11111111-1111-4111-8111-111111111111", name: "All" })],
+    next_cursor: null,
+  });
+  await pendingAll;
+  slow.resolve({
+    items: [customer({ id: "22222222-2222-4222-8222-222222222222", name: "Archived" })],
+    next_cursor: null,
+  });
+  await pendingArchived;
+  assert.equal(controller.getSnapshot().stateFilter, "all");
+  assert.equal(controller.getSnapshot().items[0]?.name, "All");
+});
+
+test("duplicate filter tap for same state does not issue another request", async () => {
+  let calls = 0;
+  const controller = createCustomersListController({
+    listCustomers: async () => {
+      calls += 1;
+      return { items: [], next_cursor: null };
+    },
+  });
+  await controller.bootstrap("token");
+  const afterBoot = calls;
+  await controller.setStateFilter("token", "active");
+  assert.equal(calls, afterBoot);
+});
+
+test("repeat filter switch uses cached page immediately while refresh runs", async () => {
+  const slow = deferred<CustomerListPage>();
+  let archivedCalls = 0;
+  const controller = createCustomersListController({
+    listCustomers: async (_token, params) => {
+      if (params?.state === "archived") {
+        archivedCalls += 1;
+        if (archivedCalls === 1) {
+          return {
+            items: [customer({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Archived One" })],
+            next_cursor: null,
+          };
+        }
+        return slow.promise;
+      }
+      return {
+        items: [customer({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Active One" })],
+        next_cursor: null,
+      };
+    },
+  });
+  await controller.bootstrap("token");
+  await controller.setStateFilter("token", "archived");
+  await controller.setStateFilter("token", "active");
+  const second = controller.setStateFilter("token", "archived");
+  assert.equal(controller.getSnapshot().items[0]?.name, "Archived One");
+  assert.equal(controller.getSnapshot().phase, "loading");
+  slow.resolve({
+    items: [customer({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Archived One" })],
+    next_cursor: null,
+  });
+  await second;
+});
+
+test("authenticated list request uses provided access token only (no bootstrap/login)", async () => {
+  const tokens: string[] = [];
+  const controller = createCustomersListController({
+    listCustomers: async (accessToken) => {
+      tokens.push(accessToken);
+      return { items: [], next_cursor: null };
+    },
+  });
+  await controller.setStateFilter("access-token-xyz", "archived");
+  assert.deepEqual(tokens, ["access-token-xyz"]);
 });
 
 test("return after create refreshes list", async () => {
