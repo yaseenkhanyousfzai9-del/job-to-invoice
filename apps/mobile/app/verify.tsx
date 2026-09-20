@@ -13,6 +13,7 @@ import {
   Title,
 } from "../src/components/ui";
 import { resolveCanonicalVerifyEmail } from "../src/lib/otp-request-state";
+import { createVerifyScreenSubmitPolicy } from "../src/lib/verify-screen-submit";
 import { useAuth } from "../src/providers/AuthProvider";
 
 export default function VerifyScreen() {
@@ -26,11 +27,12 @@ export default function VerifyScreen() {
   const email = resolved.email;
   const [code, setCode] = useState("");
   const [now, setNow] = useState(Date.now());
-  const submitGuard = useRef(false);
+  const submitPolicy = useRef(createVerifyScreenSubmitPolicy()).current;
   const resendGuard = useRef(false);
   const lastClearedGeneration = useRef(0);
 
   useEffect(() => {
+    // Countdown UI only — must never call verifyCode / verifyOtp.
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
@@ -39,8 +41,11 @@ export default function VerifyScreen() {
     if (auth.otpGeneration > 0 && auth.otpGeneration !== lastClearedGeneration.current) {
       lastClearedGeneration.current = auth.otpGeneration;
       setCode("");
+      submitPolicy.clearForNewGeneration(auth.otpGeneration);
     }
-  }, [auth.otpGeneration]);
+  }, [auth.otpGeneration, submitPolicy]);
+
+  // No mount/effect auto-verify. Remount with a filled code must not verify.
 
   if (auth.navigation === "setup") {
     return <Redirect href="/setup" />;
@@ -53,16 +58,19 @@ export default function VerifyScreen() {
   }
 
   const remaining = auth.cooldownUntil ? Math.max(0, Math.ceil((auth.cooldownUntil - now) / 1000)) : 0;
-  const verifyBusy = auth.verifying || submitGuard.current;
+  const verifyBusy = auth.verifying || submitPolicy.locked;
   const sendBusy = auth.sending || resendGuard.current;
 
   async function onSubmit() {
-    if (submitGuard.current || auth.verifying || auth.sending) {
+    const generation = auth.otpGeneration;
+    if (!submitPolicy.canSubmit(generation, auth.verifying, auth.sending)) {
       return;
     }
-    submitGuard.current = true;
+
+    // Lock immediately before any async work — one attempt per generation until code edit.
+    submitPolicy.beginAttempt(generation, "button");
+
     try {
-      // AuthProvider resolves pendingEmail over route; pass route only as hint.
       const routeHint =
         typeof params.email === "string"
           ? params.email
@@ -71,7 +79,7 @@ export default function VerifyScreen() {
             : undefined;
       await auth.verifyCode(routeHint, code);
     } finally {
-      submitGuard.current = false;
+      submitPolicy.releaseInFlightOnly();
     }
   }
 
@@ -81,7 +89,6 @@ export default function VerifyScreen() {
     }
     resendGuard.current = true;
     try {
-      // Resend to the canonical latest-send email, not a stale route param.
       await auth.sendCode(email);
     } finally {
       resendGuard.current = false;
@@ -99,6 +106,7 @@ export default function VerifyScreen() {
           onRetry={
             auth.bootstrapRetryable
               ? () => {
+                  // Bootstrap retry only — must never call verifyCode.
                   void auth.retryBootstrap();
                 }
               : undefined
@@ -108,7 +116,12 @@ export default function VerifyScreen() {
           label="6-digit code"
           value={code}
           onChangeText={(value) => {
-            setCode(value.replace(/\D/g, "").slice(0, 6));
+            const next = value.replace(/\D/g, "").slice(0, 6);
+            if (next !== code) {
+              submitPolicy.clearForUserCodeEdit();
+              auth.clearVerifyAttemptForCodeEdit();
+            }
+            setCode(next);
             auth.clearError();
           }}
           keyboardType="number-pad"

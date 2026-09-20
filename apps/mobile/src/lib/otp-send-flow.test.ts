@@ -200,9 +200,10 @@ test("Verify uses current generation only", async () => {
     code: "123456",
     generation: current,
     verifyOtp: async () => ({
-      data: { session: { access_token: "access-token" } },
+      data: { session: { access_token: "access-token", refresh_token: "refresh-token" } },
       error: null,
     }),
+    setSession: async () => ({ error: null }),
     fetchMe: async () => meReady(),
     log: (stage, extra) => {
       if (stage === "verify_started") {
@@ -242,8 +243,12 @@ test("successful verify continues bootstrap once", async () => {
     code: "123456",
     verifyOtp: async () => {
       verifyCalls += 1;
-      return { data: { session: { access_token: "access-token" } }, error: null };
+      return {
+        data: { session: { access_token: "access-token", refresh_token: "refresh-token" } },
+        error: null,
+      };
     },
+    setSession: async () => ({ error: null }),
     fetchMe: async () => {
       bootstrapCalls += 1;
       return meReady();
