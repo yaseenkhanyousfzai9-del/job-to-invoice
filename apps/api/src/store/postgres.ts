@@ -1,4 +1,4 @@
-import { conflict } from "@job-to-invoice/domain";
+import { conflict, decodeCustomerListCursor, encodeCustomerListCursor, escapeLikePattern } from "@job-to-invoice/domain";
 import type {
   AccountStatus,
   Customer,
@@ -246,6 +246,93 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               updated_at: row.updated_at,
             };
             return customer;
+          },
+          async listCustomers(input) {
+            const query = input.query;
+            const cursor = query.cursor
+              ? decodeCustomerListCursor(query.cursor, {
+                  state: query.state,
+                  search: query.search,
+                })
+              : null;
+            const searchPattern =
+              query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
+
+            const stateFilter =
+              query.state === "active"
+                ? tx`and archived_at is null`
+                : query.state === "archived"
+                  ? tx`and archived_at is not null`
+                  : tx``;
+
+            const searchFilter =
+              searchPattern === null
+                ? tx``
+                : tx`and (
+                    name ilike ${searchPattern} escape '\\'
+                    or coalesce(email, '') ilike ${searchPattern} escape '\\'
+                    or coalesce(normalized_email, '') ilike ${searchPattern} escape '\\'
+                  )`;
+
+            const cursorFilter =
+              cursor === null
+                ? tx``
+                : tx`and (
+                    updated_at < ${cursor.updated_at}::timestamptz
+                    or (
+                      updated_at = ${cursor.updated_at}::timestamptz
+                      and id < ${cursor.id}::uuid
+                    )
+                  )`;
+
+            const rows = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              select id, name, email, phone, billing_address_json as billing_address,
+                     archived_at, version, created_at, updated_at
+              from app.customers
+              where workspace_id = ${input.workspaceId}::uuid
+              ${stateFilter}
+              ${searchFilter}
+              ${cursorFilter}
+              order by updated_at desc, id desc
+              limit ${query.limit + 1}
+            `;
+
+            const hasMore = rows.length > query.limit;
+            const page = hasMore ? rows.slice(0, query.limit) : rows;
+            const items: Customer[] = page.map((row) => ({
+              id: row.id,
+              name: row.name,
+              email: row.email,
+              phone: row.phone,
+              billing_address: row.billing_address,
+              archived_at: row.archived_at,
+              version: row.version,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+            }));
+            const last = items[items.length - 1];
+            const next_cursor =
+              hasMore && last
+                ? encodeCustomerListCursor({
+                    updated_at: last.updated_at,
+                    id: last.id,
+                    state: query.state,
+                    search: query.search,
+                  })
+                : null;
+            return { items, next_cursor };
           },
           async getIdempotency(actorScope, key) {
             const rows = await tx<IdempotencyRecord[]>`

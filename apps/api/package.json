@@ -8,7 +8,7 @@
     "start": "tsx --import ./src/load-dev-env.ts src/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "tsx --import ./src/load-dev-env.ts --test src/app.test.ts src/dev-db.security.test.ts src/customers.security.test.ts src/customers.create.test.ts src/customers.create.live.test.ts src/dev-env-bootstrap.test.ts",
+    "test": "tsx --import ./src/load-dev-env.ts --test src/app.test.ts src/dev-db.security.test.ts src/customers.security.test.ts src/customers.create.test.ts src/customers.create.live.test.ts src/customers.list.test.ts src/customers.list.live.test.ts src/dev-env-bootstrap.test.ts",
     "build": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

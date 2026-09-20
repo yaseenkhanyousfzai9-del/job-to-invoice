@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01 and **CUST-API-01** are VERIFIED. **CUST-UI-01** is **VERIFIED** (physical Android create form: minimal/email/full-address create, duplicate warning + confirm, required name / invalid phone / partial address validation, double-submit guard, keyboard/scroll, network/API failure retryable error). S07 create path is VERIFIED; S07 archive restore (`R-CUS-16`) remains PENDING. Live owner OTP (QA01/QA02) remains unverified. GET/PATCH/archive/delete and Customers list remain PENDING. CUS01, CUS02, S06, and S19 are not complete overall.
+Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01, **CUST-API-01**, and **CUST-API-02** are VERIFIED. **CUST-UI-01** is **VERIFIED** (physical Android create form: minimal/email/full-address create, duplicate warning + confirm, required name / invalid phone / partial address validation, double-submit guard, keyboard/scroll, network/API failure retryable error). **CUST-UI-02** (Customers list UI) remains **PENDING**. S07 create path is VERIFIED; S07 archive restore (`R-CUS-16`) remains PENDING. Live owner OTP (QA01/QA02) remains unverified. GET by id / PATCH / archive / delete remain PENDING. S19 is not complete overall (list API only). CUS01, CUS02, and S06 are not complete overall.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -96,10 +96,10 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 
 | ID | PRD | Requirement | Screen/Flow | Backend | Analytics | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| R-CUS-35 | GET /customers API02 API03 | Owner search/filter/page; own records only; cursor pagination default 25 max 100; descending `(updated_at,id)` | S19 | `GET /v1/customers` | none (PRD allowlist) | Pagination, filter, two-tenant isolation | PENDING |
+| R-CUS-35 | GET /customers API02 API03 | Owner search/filter/page; own records only; cursor pagination default 25 max 100; descending `(updated_at,id)` | S19 | `GET /v1/customers` | none (PRD allowlist) | Pagination, filter, two-tenant isolation | VERIFIED |
 | R-CUS-35A | S19 DEC-CUST-001 | Additive owner `GET /v1/customers/{id}`; generic 404; no unrestricted CRUD; no embedded jobs | S19 detail | `GET /v1/customers/{id}` | none (PRD allowlist) | QA03; archived still readable | PENDING |
 | R-CUS-35B | S19 DEC-CUST-006 | Associated jobs via `GET /v1/jobs?customer_id=`; foreign customer 404 | S19 detail | `GET /v1/jobs` filter | none (PRD allowlist) | Own empty list vs foreign 404 | PENDING |
-| R-CUS-36 | INV08 API03 | Default list hides archived; `state` filter can show archived | S19 | `state=active\|archived\|all` | none (PRD allowlist) | Default omits archived | PENDING |
+| R-CUS-36 | INV08 API03 | Default list hides archived; `state` filter can show archived | S19 | `state=active\|archived\|all` | none (PRD allowlist) | Default omits archived | VERIFIED |
 | R-CUS-37 | POST /customers API01 | Create versioned customer; Idempotency-Key required | S07 | `POST /v1/customers` | none (PRD allowlist) | Replay once; mismatch 409 | VERIFIED |
 | R-CUS-38 | PATCH /customers/{id} SYNC03 | Mutable contact fields with If-Match; increment version | S07 edit | `PATCH /v1/customers/{id}` | none (PRD allowlist) | Stale If-Match 409 VERSION_CONFLICT | PENDING |
 | R-CUS-39 | POST /customers/{id}/archive DEC-CUST-005 | `archived` boolean; referenced records preserved; Idempotency-Key; If-Match not required; version increments on change | S07, S19 | `POST /v1/customers/{id}/archive` | none (PRD allowlist) | Archive/restore; jobs remain; no If-Match required | PENDING |

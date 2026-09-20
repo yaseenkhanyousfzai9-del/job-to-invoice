@@ -1,4 +1,8 @@
-import { conflict } from "@job-to-invoice/domain";
+import {
+  conflict,
+  decodeCustomerListCursor,
+  encodeCustomerListCursor,
+} from "@job-to-invoice/domain";
 import type { Customer } from "@job-to-invoice/domain";
 import type {
   AllowanceRecord,
@@ -181,6 +185,59 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       rows.push(row);
       state.customersByWorkspace.set(input.workspaceId, rows);
       return toCustomer(row);
+    },
+    async listCustomers(input) {
+      const query = input.query;
+      let rows = [...(state.customersByWorkspace.get(input.workspaceId) ?? [])];
+      if (query.state === "active") {
+        rows = rows.filter((row) => row.archived_at === null);
+      } else if (query.state === "archived") {
+        rows = rows.filter((row) => row.archived_at !== null);
+      }
+      if (query.search) {
+        const needle = query.search.toLowerCase();
+        rows = rows.filter((row) => {
+          const name = row.name.toLowerCase();
+          const email = (row.email ?? "").toLowerCase();
+          const normalized = (row.normalized_email ?? "").toLowerCase();
+          return name.includes(needle) || email.includes(needle) || normalized.includes(needle);
+        });
+      }
+      rows.sort((a, b) => {
+        if (a.updated_at === b.updated_at) {
+          return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+        }
+        return a.updated_at < b.updated_at ? 1 : -1;
+      });
+      if (query.cursor) {
+        const cursor = decodeCustomerListCursor(query.cursor, {
+          state: query.state,
+          search: query.search,
+        });
+        rows = rows.filter((row) => {
+          if (row.updated_at < cursor.updated_at) {
+            return true;
+          }
+          if (row.updated_at > cursor.updated_at) {
+            return false;
+          }
+          return row.id < cursor.id;
+        });
+      }
+      const page = rows.slice(0, query.limit + 1);
+      const hasMore = page.length > query.limit;
+      const items = (hasMore ? page.slice(0, query.limit) : page).map(toCustomer);
+      const last = items[items.length - 1];
+      const next_cursor =
+        hasMore && last
+          ? encodeCustomerListCursor({
+              updated_at: last.updated_at,
+              id: last.id,
+              state: query.state,
+              search: query.search,
+            })
+          : null;
+      return { items, next_cursor };
     },
     async getIdempotency(actorScope, key) {
       const row = state.idempotency.get(`${actorScope}:${key}`);

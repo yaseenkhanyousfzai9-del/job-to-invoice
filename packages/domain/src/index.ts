@@ -63,3 +63,9 @@ export {
   type DuplicateCustomerMatch,
   type UpdateCustomerInput,
 } from "./customer.ts";
+export {
+  decodeCustomerListCursor,
+  encodeCustomerListCursor,
+  escapeLikePattern,
+  type CustomerListCursorPayload,
+} from "./customer-list-cursor.ts";

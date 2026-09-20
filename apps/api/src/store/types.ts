@@ -2,6 +2,7 @@ import type {
   AccountStatus,
   CreateCustomerInput,
   Customer,
+  CustomerListQuery,
   DuplicateCustomerMatch,
   UsAddress,
   WorkspaceCreateInput,
@@ -119,6 +120,10 @@ export type OwnerTx = {
     fields: CreateCustomerInput;
     now: string;
   }): Promise<Customer>;
+  listCustomers(input: {
+    workspaceId: string;
+    query: CustomerListQuery;
+  }): Promise<{ items: Customer[]; next_cursor: string | null }>;
   getIdempotency(actorScope: string, key: string): Promise<IdempotencyRecord | null>;
   putIdempotency(record: IdempotencyRecord): Promise<void>;
 };

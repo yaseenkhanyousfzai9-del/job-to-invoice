@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01 and CUST-API-01 are VERIFIED on the US development project. CUST-UI-01 is VERIFIED on physical Android (create form). CUST-API-02 (list/search) remains later and is not READY until authorized. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, and CUST-API-02 are VERIFIED on the US development project. CUST-UI-01 is VERIFIED on physical Android (create form). CUST-UI-02 (Customers list UI) remains PENDING. S19 is not fully VERIFIED until list UI lands. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -767,6 +767,8 @@ Device or representative runtime recording of create + duplicate warning + Unico
 
 Customer list/search/pagination
 
+**Status: VERIFIED** (2026-09-20) — `GET /v1/customers` on US development project. CUST-UI-02 remains PENDING; S19 is not fully VERIFIED.
+
 ### PRD IDs
 
 S19, INV08, API02, API03, DB03, AUTHZ01, `GET /customers`
@@ -837,11 +839,20 @@ Paginated owner-scoped list with default active filter.
 
 Integration tests with two workspaces and mixed archived/active rows.
 
+### Evidence (CUST-API-02)
+
+- Memory suite `customers.list.test.ts`: 401, empty list, default active / archived / all, name+email case-insensitive search, no-match empty, workspace isolation, duplicate-email both appear, `(updated_at,id)` order, limit, cursor without duplicates, malformed cursor / invalid state / invalid limits → 422, no `workspace_id` / `normalized_email` leak.
+- Live suite `customers.list.live.test.ts` against `DATABASE_URL_API`: authenticated list + `?search=Android`, two-tenant isolation (owner B cannot see owner A).
+- Domain cursor codec tests (`customer-list-cursor.test.ts`).
+- Ordering conflict resolved per docs/API.md: `(updated_at, id) DESC` (not `created_at`).
+
 ---
 
 ## CUST-UI-02
 
 Customer List
+
+**Status: PENDING**
 
 ### PRD IDs
 
@@ -1841,10 +1852,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search) remains later and is not started.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 remains **PENDING**; S19 is not fully VERIFIED.
 3. Jobs table + composite FK (`R-CUS-31` / `R-CUS-PRE-05`) still required before referenced-delete DB backstop.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start CUST-API-02 until authorized.
+Do not start CUST-UI-02 until authorized.

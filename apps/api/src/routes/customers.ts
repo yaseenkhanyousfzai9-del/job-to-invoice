@@ -3,6 +3,7 @@ import {
   duplicateCustomerEmailConflict,
   isUuid,
   parseCreateCustomerInput,
+  parseCustomerListQuery,
   validationFailed,
   type Customer,
 } from "@job-to-invoice/domain";
@@ -51,6 +52,24 @@ export async function registerCustomersRoute(
   app: FastifyInstance,
   deps: { store: AuthStore },
 ): Promise<void> {
+  app.get("/v1/customers", async (request) => {
+    const owner = requireOwner(request);
+    requireActiveOwner(owner);
+    const query = parseCustomerListQuery(request.query);
+
+    return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
+      const bundle = await tx.findWorkspaceByOwner(owner.userId);
+      if (!bundle) {
+        return successEnvelope(request.id, { items: [], next_cursor: null });
+      }
+      const page = await tx.listCustomers({
+        workspaceId: bundle.workspace.id,
+        query,
+      });
+      return successEnvelope(request.id, page);
+    });
+  });
+
   app.post("/v1/customers", async (request, reply) => {
     const owner = requireOwner(request);
     requireActiveOwner(owner);
