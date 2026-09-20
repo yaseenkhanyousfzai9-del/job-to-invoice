@@ -28,6 +28,9 @@ type RequestOptions = {
   idempotencyKey?: string;
 };
 
+/** Prevent indefinite startup spinner when the LAN API is unreachable. */
+export const API_FETCH_TIMEOUT_MS = 20_000;
+
 export async function apiRequest<T>(path: string, options: RequestOptions): Promise<T> {
   const config = loadMobileConfig();
   const headers: Record<string, string> = {
@@ -41,21 +44,31 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
     headers["Idempotency-Key"] = options.idempotencyKey;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_FETCH_TIMEOUT_MS);
+
   let response: Response;
   try {
     response = await fetch(`${config.apiBaseUrl}${path}`, {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      // React Native's AbortSignal typings differ from DOM; runtime behavior is correct.
+      signal: controller.signal as RequestInit["signal"],
     });
-  } catch {
+  } catch (cause) {
     throw new DomainApiError({
       code: "NETWORK",
-      message: "Network problem. Check your connection and try again.",
+      message:
+        cause instanceof Error && cause.name === "AbortError"
+          ? "Request timed out. Check that the API is reachable and try again."
+          : "Network problem. Check your connection and try again.",
       field_errors: {},
       retryable: true,
       status: 0,
     });
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const json = (await response.json().catch(() => null)) as

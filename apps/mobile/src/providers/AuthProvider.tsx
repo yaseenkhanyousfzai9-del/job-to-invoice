@@ -28,6 +28,7 @@ import {
   createVerifySingleFlight,
   runVerifyAuthFlow,
 } from "../lib/verify-auth-flow";
+import { runSessionBootstrap } from "../lib/sessionBootstrap";
 
 type AuthContextValue = {
   loading: boolean;
@@ -94,36 +95,48 @@ export function AuthProvider(props: { children: ReactNode }) {
   const latestOtpRequest = useRef(createLatestOtpRequestState()).current;
 
   const loadFromSession = useCallback(async () => {
-    if (!isAuthProviderConfigured()) {
-      setAccessToken(null);
-      setMe(null);
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
     try {
-      const supabase = getSupabaseClient();
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token ?? null;
-      setAccessToken(token);
-      if (!token) {
+      const configured = isAuthProviderConfigured();
+      const result = await runSessionBootstrap({
+        configured,
+        getSession: async () => {
+          const supabase = getSupabaseClient();
+          const { data } = await supabase.auth.getSession();
+          return data;
+        },
+        fetchMe,
+        signOut: async () => {
+          const supabase = getSupabaseClient();
+          await supabase.auth.signOut();
+        },
+      });
+
+      if (result.kind === "unconfigured" || result.kind === "no_session" || result.kind === "signed_out_401") {
+        setAccessToken(null);
         setMe(null);
+        setBootstrapRetryable(false);
+        setError(null);
         return;
       }
-      try {
-        setMe(await fetchMe(token));
+      if (result.kind === "session_error") {
+        setAccessToken(null);
+        setMe(null);
         setBootstrapRetryable(false);
-      } catch (cause) {
-        if (cause instanceof DomainApiError && cause.api.status === 401) {
-          await supabase.auth.signOut();
-          setAccessToken(null);
-          setMe(null);
-          return;
-        }
-        setBootstrapRetryable(true);
-        setError(BOOTSTRAP_FAILED_MESSAGE);
+        setError(result.message);
+        return;
       }
-    } catch (cause) {
-      setError(mapProviderAuthError(cause).message);
+      if (result.kind === "bootstrap_failed") {
+        setAccessToken(result.accessToken);
+        setMe(null);
+        setBootstrapRetryable(true);
+        setError(result.message);
+        return;
+      }
+      setAccessToken(result.accessToken);
+      setMe(result.me);
+      setBootstrapRetryable(false);
+      setError(null);
     } finally {
       setLoading(false);
     }
