@@ -16,7 +16,7 @@ Only **VERIFIED** counts as complete.
 
 This matrix currently contains the **Customer** implementation family, its prerequisites, and a governance section for planning documents.
 
-Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01, **CUST-API-01**, and **CUST-API-02** are VERIFIED. **CUST-UI-01** is **VERIFIED** (physical Android create form). **CUST-UI-02** (Customers list UI) is **IMPLEMENTED**; filter-switch path reduced to one authorized DB transaction + client page cache — awaiting physical Android retest of Active→Archived latency. S07 create path is VERIFIED; S07 archive restore (`R-CUS-16`) remains PENDING. Live owner OTP (QA01/QA02) remains unverified. GET by id / PATCH / archive / delete remain PENDING. S19 is not complete overall (list UI not physically verified; detail/jobs pending). CUS01, CUS02, and S06 are not complete overall.
+Customer behaviour rows remain mostly **PENDING**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED. SUPABASE-DEV-RUNTIME-ROLE-03 verified `app_api_login` on the US development project. CUST-DB-01, **CUST-API-01**, and **CUST-API-02** are VERIFIED. **CUST-UI-01** is **VERIFIED** (physical Android create form). **CUST-UI-02** is **VERIFIED** (physical Android Customers list/search, 2026-09-20). S19 is **partially** complete: list/search/create entry (**R-CUS-17**) is VERIFIED; customer detail, associated jobs, archive/delete UX remain PENDING. S07 create path is VERIFIED; S07 archive restore (`R-CUS-16`) remains PENDING. Live owner OTP (QA01/QA02) remains unverified. GET by id / PATCH / archive / delete remain PENDING. CUS01, CUS02, and S06 are not complete overall.
 
 Analytics: PRD ANA01 does not define customer CRUD events and forbids customer names/emails/addresses in telemetry. The Analytics column is `none (PRD allowlist)` unless a listed event applies.
 
@@ -63,10 +63,10 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 | R-CUS-14 | S07 | Customer form fields: name, email, optional phone, billing address | S07 | `POST/PATCH /customers` | none (PRD allowlist) | Field contract + validation; physical Android create form | VERIFIED |
 | R-CUS-15 | S07 CUS01 DEC-CUST-002 | Duplicate email warning on the form from server 409, not UI-only | S07 | Duplicate-email API confirmation | none (PRD allowlist) | Warning + confirm; retry with new Idempotency-Key; physical Android | VERIFIED |
 | R-CUS-16 | S07 | Archived customer restore option on the form | S07 | `POST /customers/{id}/archive` `{archived:false}` | none (PRD allowlist) | Restore returns customer to default list/picker | PENDING |
-| R-CUS-17 | S19 | Customers tab: search, list, create | S19 | `GET /customers` search/page | none (PRD allowlist) | Search, pagination, create entry | IMPLEMENTED |
+| R-CUS-17 | S19 | Customers tab: search, list, create | S19 | `GET /customers` search/page | none (PRD allowlist) | Physical Android 2026-09-20: route, Active/Archived/All, search, create entry, return-after-create refresh | VERIFIED |
 | R-CUS-18 | S19 DEC-CUST-001 DEC-CUST-006 | Customer detail shows associated jobs via customer GET plus jobs filter | S19 detail | `GET /v1/customers/{id}` and `GET /v1/jobs?customer_id=` | none (PRD allowlist) | Empty jobs and ≥1 job; foreign customer_id 404 | PENDING |
 | R-CUS-19 | S19 | Archive rather than destructive delete where referenced | S19 | Archive command + DELETE 409 | none (PRD allowlist) | UI offers archive on referenced 409 | PENDING |
-| R-CUS-20 | UI04 | Customer list/detail/form have loading, empty, loaded, refresh failure, offline, access-expired | S07, S19, S06 | API errors 401/5xx; cache later | none (PRD allowlist) | State matrix per screen | PENDING |
+| R-CUS-20 | UI04 | Customer list/detail/form have loading, empty, loaded, refresh failure, offline, access-expired | S07, S19, S06 | API errors 401/5xx; cache later | none (PRD allowlist) | List: loaded + API-off retryable error + Retry recovery physically verified 2026-09-20; empty/access-expired + detail/form matrix still open | IMPLEMENTED |
 | R-CUS-21 | UI01 UI02 UI03 NFR01 | Customer UI uses specified tokens, 44×44 targets, Dynamic Type, VoiceOver labels, light appearance | S07, S19, S06 | none | none (PRD allowlist) | QA61 analogue on Customer screens | PENDING |
 
 ### Validation
@@ -128,7 +128,7 @@ These rows record that planning artifacts exist. They are **not** Customer produ
 | R-CUS-52 | SYNC05 DEC10 | Archive/delete/restore are not auto-issued from the offline queue | S19 | Live command | none (PRD allowlist) | Reconnect does not fire queued delete | PENDING |
 | R-CUS-53 | ACC02 UI04 | Offline cached read for up to seven days since last successful auth; access-expired thereafter | S19 | Cached rows + auth timestamp | none (PRD allowlist) | Expired cache requires sign-in | PENDING |
 | R-CUS-54 | SYNC06 | Account switch locks/wipes previous customer cache after unsynced confirmation | Settings sign-out / switch | Local DB | none (PRD allowlist) | Owner B cannot see Owner A cache | PENDING |
-| R-CUS-55 | NFR05 QA06 | Never show zero customers as a successful server result when the database/API is unavailable | S19 | Error vs empty distinction | none (PRD allowlist) | API down ≠ empty list | PENDING |
+| R-CUS-55 | NFR05 QA06 | Never show zero customers as a successful server result when the database/API is unavailable | S19 | Error vs empty distinction | none (PRD allowlist) | Physical Android 2026-09-20: API-off filter → retryable error (not empty success); session kept; Retry restores list | VERIFIED |
 
 ### Security / QA involving customers
 
