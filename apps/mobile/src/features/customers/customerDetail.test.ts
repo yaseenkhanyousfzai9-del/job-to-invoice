@@ -68,12 +68,13 @@ test("customer detail route file exists at customers/[id].tsx", () => {
 test("tapping customer uses canonical detail href with id only", () => {
   const id = "11111111-1111-4111-8111-111111111111";
   const href = customerDetailHref(id);
-  assert.equal(href, `/(app)/customers/${id}`);
-  assert.equal(href.includes(id), true);
-  assert.equal(href.includes("@"), false);
-  assert.equal(href.includes("Ada"), false);
+  assert.equal(href.pathname, "/(app)/customers/[id]");
+  assert.deepEqual(href.params, { id });
+  assert.equal(Object.keys(href.params).length, 1);
+  assert.equal("email" in href.params, false);
+  assert.equal("name" in href.params, false);
   assert.equal(isInvalidCustomerDetailHref(href), false);
-  assert.equal(href.includes("/index"), false);
+  assert.equal(href.pathname.includes("/index"), false);
 });
 
 test("back target remains canonical Customers list", () => {

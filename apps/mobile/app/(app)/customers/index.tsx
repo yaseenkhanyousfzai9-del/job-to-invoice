@@ -26,7 +26,11 @@ import {
   showCustomersInitialLoading,
   type CustomersListSnapshot,
 } from "../../../src/features/customers/customersList";
-import { CUSTOMERS_NEW_HREF, customerDetailHref } from "../../../src/features/customers/customerRoutes";
+import {
+  CUSTOMERS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS,
+  CUSTOMERS_NEW_HREF,
+  pushCustomerDetail,
+} from "../../../src/features/customers/customerRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
@@ -103,6 +107,12 @@ export default function CustomersListScreen() {
     }
   }
 
+  function onOpenCustomer(customerId: string) {
+    pushCustomerDetail((href) => {
+      router.push(href as Href);
+    }, customerId);
+  }
+
   return (
     <Screen testID="customers-list-screen">
       <Stack.Screen options={{ title: "Customers", headerBackTitle: "Back" }} />
@@ -154,19 +164,20 @@ export default function CustomersListScreen() {
         snapshot={snapshot}
         onAddCustomer={() => router.push(CUSTOMERS_NEW_HREF)}
         onLoadMore={() => void onLoadMore()}
-        onOpenCustomer={(id) => router.push(customerDetailHref(id) as Href)}
+        onOpenCustomer={onOpenCustomer}
       />
     </Screen>
   );
 }
 
-function CustomersListBody(props: {
+export function CustomersListBody(props: {
   snapshot: CustomersListSnapshot;
   onAddCustomer: () => void;
   onLoadMore: () => void;
   onOpenCustomer: (customerId: string) => void;
 }) {
   const { snapshot } = props;
+  const rowsEnabled = snapshot.phase !== "loading" || snapshot.items.length > 0;
 
   if (showCustomersInitialLoading(snapshot)) {
     return (
@@ -199,28 +210,20 @@ function CustomersListBody(props: {
       data={snapshot.items}
       keyExtractor={(item) => item.id}
       contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps={CUSTOMERS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS}
+      keyboardDismissMode="on-drag"
       renderItem={({ item }) => {
         const row = presentCustomerRow(item);
         return (
-          <Pressable
-            accessibilityRole="button"
+          <CustomerRow
+            name={row.name}
+            email={row.email}
+            phone={row.phone}
+            archivedLabel={row.archivedLabel}
             accessibilityLabel={row.accessibilityLabel}
+            disabled={!rowsEnabled}
             onPress={() => props.onOpenCustomer(row.id)}
-            style={styles.row}
-          >
-            <View style={styles.rowText}>
-              <Text style={styles.rowName}>{row.name}</Text>
-              {row.email ? <Text style={styles.rowMeta}>{row.email}</Text> : null}
-              {row.phone ? <Text style={styles.rowMeta}>{row.phone}</Text> : null}
-              {row.archivedLabel ? (
-                <Text style={styles.archived}>{row.archivedLabel}</Text>
-              ) : null}
-            </View>
-            <Text style={styles.chevron} accessibilityElementsHidden>
-              ›
-            </Text>
-          </Pressable>
+          />
         );
       }}
       ListFooterComponent={
@@ -234,6 +237,42 @@ function CustomersListBody(props: {
         ) : null
       }
     />
+  );
+}
+
+/** Extracted for press-target tests; keeps the whole row tappable. */
+export function CustomerRow(props: {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  archivedLabel: string | null;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      testID="customer-row"
+      accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel}
+      accessibilityState={{ disabled: Boolean(props.disabled) }}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      hitSlop={8}
+      style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
+    >
+      <View style={styles.rowText} pointerEvents="none">
+        <Text style={styles.rowName}>{props.name}</Text>
+        {props.email ? <Text style={styles.rowMeta}>{props.email}</Text> : null}
+        {props.phone ? <Text style={styles.rowMeta}>{props.phone}</Text> : null}
+        {props.archivedLabel ? (
+          <Text style={styles.archived}>{props.archivedLabel}</Text>
+        ) : null}
+      </View>
+      <Text style={styles.chevron} accessibilityElementsHidden importantForAccessibility="no">
+        ›
+      </Text>
+    </Pressable>
   );
 }
 
@@ -285,6 +324,9 @@ const styles = StyleSheet.create({
     minHeight: layout.minTouchTarget,
     flexDirection: "row",
     alignItems: "center",
+  },
+  rowPressed: {
+    opacity: 0.85,
   },
   rowText: {
     flex: 1,
