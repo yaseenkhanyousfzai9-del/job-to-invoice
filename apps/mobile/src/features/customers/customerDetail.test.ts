@@ -61,8 +61,12 @@ function wait(ms = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-test("customer detail route file exists at customers/[id].tsx", () => {
-  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id].tsx")), true);
+test("customer detail route file exists at customers/[id]/index.tsx", () => {
+  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id]", "index.tsx")), true);
+});
+
+test("customer edit route file exists at customers/[id]/edit.tsx", () => {
+  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id]", "edit.tsx")), true);
 });
 
 test("tapping customer uses canonical detail href with id only", () => {

@@ -8,10 +8,13 @@ import {
   CUSTOMERS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS,
   CUSTOMERS_NEW_HREF,
   customerDetailHref,
+  customerEditHref,
   customersListHrefWithCreatedFlag,
   isInvalidCustomerDetailHref,
+  isInvalidCustomerEditHref,
   isInvalidCustomersListHref,
   pushCustomerDetail,
+  pushCustomerEdit,
 } from "./customerRoutes";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "../../../app");
@@ -44,9 +47,31 @@ test("Customer detail targets pathname + id params only", () => {
   assert.equal(href.pathname, "/(app)/customers/[id]");
   assert.deepEqual(href.params, { id });
   assert.equal(Object.keys(href.params).length, 1);
-  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id].tsx")), true);
+  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id]", "index.tsx")), true);
   assert.equal(isInvalidCustomerDetailHref(href), false);
   assert.equal(href.pathname.includes("/index"), false);
+});
+
+test("Customer edit targets pathname + id params only", () => {
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const href = customerEditHref(id);
+  assert.equal(href.pathname, "/(app)/customers/[id]/edit");
+  assert.deepEqual(href.params, { id });
+  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id]", "edit.tsx")), true);
+  assert.equal(isInvalidCustomerEditHref(href), false);
+  assert.equal(href.pathname.includes("/index"), false);
+});
+
+test("pushCustomerEdit uses id-only params", () => {
+  const calls: unknown[] = [];
+  pushCustomerEdit((href) => {
+    calls.push(href);
+  }, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    pathname: "/(app)/customers/[id]/edit",
+    params: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+  });
 });
 
 test("successful Customer create returns to canonical Customers route", () => {

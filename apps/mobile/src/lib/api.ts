@@ -47,10 +47,11 @@ export class DomainApiError extends Error {
 }
 
 type RequestOptions = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH";
   accessToken: string;
   body?: unknown;
   idempotencyKey?: string;
+  ifMatch?: string | number;
 };
 
 /** Prevent indefinite startup spinner when the LAN API is unreachable. */
@@ -67,6 +68,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
   }
   if (options.idempotencyKey) {
     headers["Idempotency-Key"] = options.idempotencyKey;
+  }
+  if (options.ifMatch !== undefined) {
+    headers["If-Match"] = String(options.ifMatch);
   }
 
   const controller = new AbortController();
@@ -185,6 +189,25 @@ export function buildGetCustomerPath(customerId: string): string {
 
 export async function getCustomer(accessToken: string, customerId: string): Promise<Customer> {
   return apiRequest<Customer>(buildGetCustomerPath(customerId), { accessToken });
+}
+
+export function buildPatchCustomerPath(customerId: string): string {
+  return `/v1/customers/${customerId}`;
+}
+
+export async function patchCustomer(
+  accessToken: string,
+  customerId: string,
+  body: unknown,
+  options: { idempotencyKey: string; ifMatch: number },
+): Promise<Customer> {
+  return apiRequest<Customer>(buildPatchCustomerPath(customerId), {
+    method: "PATCH",
+    accessToken,
+    body,
+    idempotencyKey: options.idempotencyKey,
+    ifMatch: options.ifMatch,
+  });
 }
 
 export const JOBS_LIST_DEFAULT_LIMIT = 25;
