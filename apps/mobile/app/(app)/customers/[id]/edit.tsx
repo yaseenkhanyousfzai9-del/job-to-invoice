@@ -192,7 +192,7 @@ export default function EditCustomerScreen() {
       setConflictOpen(false);
 
       try {
-        await obtainCustomersListController().refreshPreservingFilters(auth.accessToken);
+        await obtainCustomersListController().refreshAfterMutation(auth.accessToken);
       } catch {
         // List refresh is best-effort; detail reload on focus still updates.
       }

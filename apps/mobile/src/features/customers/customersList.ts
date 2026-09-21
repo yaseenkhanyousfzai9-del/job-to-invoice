@@ -156,6 +156,10 @@ export type CustomersListController = {
   refreshPreservingFilters: (
     accessToken: string | null | undefined,
   ) => Promise<"ok" | "unauthenticated">;
+  /** Clears filter page caches then refreshes the current list (after create/edit/archive). */
+  refreshAfterMutation: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated">;
   restoreUiState: (ui: {
     searchInput: string;
     appliedSearch: string | null;
@@ -417,6 +421,10 @@ export function createCustomersListController(options?: {
       }
     },
     refreshPreservingFilters(accessToken) {
+      return replaceList(accessToken, {}, "refresh");
+    },
+    refreshAfterMutation(accessToken) {
+      pageCache.clear();
       return replaceList(accessToken, {}, "refresh");
     },
     restoreUiState(ui) {

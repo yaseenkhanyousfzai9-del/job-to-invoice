@@ -210,6 +210,24 @@ export async function patchCustomer(
   });
 }
 
+export function buildArchiveCustomerPath(customerId: string): string {
+  return `/v1/customers/${customerId}/archive`;
+}
+
+export async function archiveCustomer(
+  accessToken: string,
+  customerId: string,
+  archived: boolean,
+  idempotencyKey: string,
+): Promise<Customer> {
+  return apiRequest<Customer>(buildArchiveCustomerPath(customerId), {
+    method: "POST",
+    accessToken,
+    body: { archived },
+    idempotencyKey,
+  });
+}
+
 export const JOBS_LIST_DEFAULT_LIMIT = 25;
 
 export function buildListJobsPath(params: ListJobsParams): string {

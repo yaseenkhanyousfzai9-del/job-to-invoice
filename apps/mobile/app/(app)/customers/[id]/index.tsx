@@ -13,8 +13,18 @@ import {
   PrimaryButton,
   Screen,
   Secondary,
+  TextLink,
   Title,
 } from "../../../../src/components/ui";
+import {
+  ARCHIVE_CANCEL_ACTION,
+  ARCHIVE_CONFIRM_ACTION,
+  ARCHIVE_CONFIRM_BODY,
+  ARCHIVE_CONFIRM_TITLE,
+  archiveActionForCustomer,
+  archiveActionLabel,
+  archivePendingLabel,
+} from "../../../../src/features/customers/customerArchive";
 import {
   createCustomerDetailController,
   emptyJobsCopy,
@@ -28,6 +38,7 @@ import {
   CUSTOMERS_LIST_HREF,
   pushCustomerEdit,
 } from "../../../../src/features/customers/customerRoutes";
+import { obtainCustomersListController } from "../../../../src/features/customers/customersListSession";
 import { useAuth } from "../../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../../src/theme/tokens";
 
@@ -39,7 +50,12 @@ export default function CustomerDetailScreen() {
     typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
 
   const controller = useMemo(
-    () => createCustomerDetailController(customerId || "missing"),
+    () =>
+      createCustomerDetailController(customerId || "missing", {
+        async onArchiveSuccess(_customer, accessToken) {
+          await obtainCustomersListController().refreshAfterMutation(accessToken);
+        },
+      }),
     [customerId],
   );
   const [, rerender] = useReducer((n: number) => n + 1, 0);
@@ -86,6 +102,27 @@ export default function CustomerDetailScreen() {
     }
   }
 
+  async function onConfirmArchive() {
+    const result = await controller.confirmArchive(auth.accessToken);
+    if (result === "unauthenticated") {
+      await auth.signOut({ source: "401", reason: "customer_archive_unauthenticated" });
+    }
+  }
+
+  async function onRestore() {
+    const result = await controller.restoreCustomer(auth.accessToken);
+    if (result === "unauthenticated") {
+      await auth.signOut({ source: "401", reason: "customer_restore_unauthenticated" });
+    }
+  }
+
+  async function onRetryArchiveAction() {
+    const result = await controller.retryArchiveAction(auth.accessToken);
+    if (result === "unauthenticated") {
+      await auth.signOut({ source: "401", reason: "customer_archive_retry_unauthenticated" });
+    }
+  }
+
   return (
     <Screen testID="customer-detail-screen">
       <Stack.Screen options={{ title: "Customer", headerBackTitle: "Customers" }} />
@@ -127,6 +164,11 @@ export default function CustomerDetailScreen() {
           }
           onRetryJobs={() => void onRetryJobs()}
           onLoadMore={() => void onLoadMore()}
+          onOpenArchiveConfirm={() => controller.openArchiveConfirm()}
+          onCancelArchiveConfirm={() => controller.cancelArchiveConfirm()}
+          onConfirmArchive={() => void onConfirmArchive()}
+          onRestore={() => void onRestore()}
+          onRetryArchiveAction={() => void onRetryArchiveAction()}
         />
       ) : null}
     </Screen>
@@ -139,10 +181,21 @@ function CustomerDetailBody(props: {
   onEdit: () => void;
   onRetryJobs: () => void;
   onLoadMore: () => void;
+  onOpenArchiveConfirm: () => void;
+  onCancelArchiveConfirm: () => void;
+  onConfirmArchive: () => void;
+  onRestore: () => void;
+  onRetryArchiveAction: () => void;
 }) {
   const { snapshot } = props;
   const customer = snapshot.customer!;
   const presented = presentCustomerDetail(customer);
+  const actionKind = archiveActionForCustomer(customer);
+  const pending = snapshot.archivePending;
+  const pendingLabel =
+    snapshot.archivePendingKind !== null
+      ? archivePendingLabel(snapshot.archivePendingKind)
+      : null;
 
   return (
     <ScrollView
@@ -163,7 +216,65 @@ function CustomerDetailBody(props: {
         ) : null}
       </View>
 
-      <PrimaryButton label="Edit customer" onPress={props.onEdit} />
+      <PrimaryButton
+        label="Edit customer"
+        onPress={props.onEdit}
+        disabled={pending}
+      />
+
+      {actionKind === "archive" && !snapshot.archiveConfirmOpen ? (
+        <PrimaryButton
+          label={pending && snapshot.archivePendingKind === "archive" ? pendingLabel! : archiveActionLabel("archive")}
+          onPress={props.onOpenArchiveConfirm}
+          loading={pending && snapshot.archivePendingKind === "archive"}
+          disabled={pending}
+        />
+      ) : null}
+
+      {actionKind === "restore" && !snapshot.archiveConfirmOpen ? (
+        <PrimaryButton
+          label={pending && snapshot.archivePendingKind === "restore" ? pendingLabel! : archiveActionLabel("restore")}
+          onPress={props.onRestore}
+          loading={pending && snapshot.archivePendingKind === "restore"}
+          disabled={pending}
+        />
+      ) : null}
+
+      {snapshot.archiveConfirmOpen ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={styles.confirmCard}
+        >
+          <Text
+            accessibilityRole="header"
+            style={styles.confirmTitle}
+          >
+            {ARCHIVE_CONFIRM_TITLE}
+          </Text>
+          <Text style={styles.confirmBody}>{ARCHIVE_CONFIRM_BODY}</Text>
+          <PrimaryButton
+            label={
+              pending && snapshot.archivePendingKind === "archive"
+                ? pendingLabel!
+                : ARCHIVE_CONFIRM_ACTION
+            }
+            onPress={props.onConfirmArchive}
+            loading={pending && snapshot.archivePendingKind === "archive"}
+            disabled={pending}
+          />
+          <TextLink
+            label={ARCHIVE_CANCEL_ACTION}
+            onPress={props.onCancelArchiveConfirm}
+          />
+        </View>
+      ) : null}
+
+      <ErrorBanner
+        message={snapshot.archiveErrorMessage}
+        onRetry={
+          snapshot.archiveErrorRetryable ? props.onRetryArchiveAction : undefined
+        }
+      />
 
       {presented.email ? (
         <View style={styles.fieldBlock}>
@@ -224,7 +335,7 @@ function CustomerDetailBody(props: {
           label={snapshot.phase === "loading_more_jobs" ? "Loading…" : "Load more"}
           onPress={props.onLoadMore}
           loading={snapshot.phase === "loading_more_jobs"}
-          disabled={snapshot.loadMoreBlocked || snapshot.phase === "loading_more_jobs"}
+          disabled={snapshot.loadMoreBlocked || snapshot.phase === "loading_more_jobs" || pending}
         />
       ) : null}
     </ScrollView>
@@ -257,6 +368,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     overflow: "hidden",
+  },
+  confirmCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: layout.cornerRadius,
+    padding: 12,
+    gap: 8,
+    backgroundColor: "#ffffff",
+  },
+  confirmTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  confirmBody: {
+    fontSize: typography.secondary.fontSize,
+    color: colors.text,
   },
   fieldBlock: {
     gap: 4,

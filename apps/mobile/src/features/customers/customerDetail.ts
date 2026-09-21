@@ -8,6 +8,13 @@ import {
   listJobs,
   type JobListPage,
 } from "../../lib/api";
+import {
+  archiveActionForCustomer,
+  createArchiveIdempotencySession,
+  isCustomerArchived,
+  submitArchiveCustomer,
+  type ArchiveActionKind,
+} from "./customerArchive";
 
 export type CustomerDetailPhase =
   | "loading"
@@ -27,6 +34,12 @@ export type CustomerDetailSnapshot = {
   jobsErrorMessage: string | null;
   jobsErrorRetryable: boolean;
   loadMoreBlocked: boolean;
+  archiveConfirmOpen: boolean;
+  archivePending: boolean;
+  archivePendingKind: ArchiveActionKind | null;
+  archiveErrorMessage: string | null;
+  archiveErrorRetryable: boolean;
+  archiveRetryKind: ArchiveActionKind | null;
 };
 
 export type CustomerDetailPresentation = {
@@ -58,6 +71,12 @@ export function initialCustomerDetailSnapshot(customerId: string): CustomerDetai
     jobsErrorMessage: null,
     jobsErrorRetryable: false,
     loadMoreBlocked: false,
+    archiveConfirmOpen: false,
+    archivePending: false,
+    archivePendingKind: null,
+    archiveErrorMessage: null,
+    archiveErrorRetryable: false,
+    archiveRetryKind: null,
   };
 }
 
@@ -202,6 +221,17 @@ export type CustomerDetailController = {
   loadMoreJobs: (
     accessToken: string | null | undefined,
   ) => Promise<"ok" | "unauthenticated" | "blocked">;
+  openArchiveConfirm: () => void;
+  cancelArchiveConfirm: () => void;
+  confirmArchive: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated" | "blocked">;
+  restoreCustomer: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated" | "blocked">;
+  retryArchiveAction: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated" | "blocked">;
   dispose: () => void;
 };
 
@@ -210,14 +240,21 @@ export function createCustomerDetailController(
   options?: {
     getCustomer?: typeof getCustomer;
     listJobs?: typeof listJobs;
+    archiveCustomer?: Parameters<typeof submitArchiveCustomer>[0]["archive"];
+    onArchiveSuccess?: (customer: Customer, accessToken: string) => Promise<void> | void;
+    newIdempotencyKey?: () => string;
   },
 ): CustomerDetailController {
   const fetchCustomer = options?.getCustomer ?? getCustomer;
   const fetchJobs = options?.listJobs ?? listJobs;
+  const archivePost = options?.archiveCustomer;
+  const onArchiveSuccess = options?.onArchiveSuccess;
+  const idempotency = createArchiveIdempotencySession(options?.newIdempotencyKey);
 
   let snapshot = initialCustomerDetailSnapshot(customerId);
   const listeners = new Set<() => void>();
   let loadMoreInFlight = false;
+  let archiveInFlight = false;
   let disposed = false;
 
   function emit() {
@@ -227,6 +264,88 @@ export function createCustomerDetailController(
   function setSnapshot(patch: Partial<CustomerDetailSnapshot>) {
     snapshot = { ...snapshot, ...patch };
     emit();
+  }
+
+  async function runArchiveAction(
+    accessToken: string | null | undefined,
+    kind: ArchiveActionKind,
+  ): Promise<"ok" | "unauthenticated" | "blocked"> {
+    if (archiveInFlight || snapshot.archivePending) {
+      return "blocked";
+    }
+    if (!snapshot.customer) {
+      return "blocked";
+    }
+    const expected = archiveActionForCustomer(snapshot.customer);
+    if (expected !== kind) {
+      return "blocked";
+    }
+
+    archiveInFlight = true;
+    const archived = kind === "archive";
+    const idempotencyKey = idempotency.keyForArchived(archived);
+    setSnapshot({
+      archiveConfirmOpen: false,
+      archivePending: true,
+      archivePendingKind: kind,
+      archiveErrorMessage: null,
+      archiveErrorRetryable: false,
+      archiveRetryKind: null,
+    });
+
+    try {
+      const result = await submitArchiveCustomer({
+        accessToken,
+        customerId,
+        archived,
+        idempotencyKey,
+        ...(archivePost ? { archive: archivePost } : {}),
+      });
+
+      if (result.kind === "unauthenticated") {
+        setSnapshot({
+          archivePending: false,
+          archivePendingKind: null,
+          archiveErrorMessage: result.message,
+          archiveErrorRetryable: false,
+          archiveRetryKind: null,
+        });
+        return "unauthenticated";
+      }
+
+      if (result.kind === "success") {
+        setSnapshot({
+          phase: "ready",
+          customer: result.customer,
+          archivePending: false,
+          archivePendingKind: null,
+          archiveErrorMessage: null,
+          archiveErrorRetryable: false,
+          archiveRetryKind: null,
+          archiveConfirmOpen: false,
+        });
+        if (accessToken && onArchiveSuccess) {
+          try {
+            await onArchiveSuccess(result.customer, accessToken);
+          } catch {
+            // List refresh is best-effort.
+          }
+        }
+        return "ok";
+      }
+
+      const retryable = result.kind === "network" || (result.kind === "error" && result.retryable);
+      setSnapshot({
+        archivePending: false,
+        archivePendingKind: null,
+        archiveErrorMessage: result.message,
+        archiveErrorRetryable: retryable,
+        archiveRetryKind: retryable ? kind : null,
+      });
+      return "ok";
+    } finally {
+      archiveInFlight = false;
+    }
   }
 
   async function loadAll(accessToken: string | null | undefined): Promise<"ok" | "unauthenticated"> {
@@ -449,6 +568,32 @@ export function createCustomerDetailController(
       } finally {
         loadMoreInFlight = false;
       }
+    },
+    openArchiveConfirm() {
+      if (!snapshot.customer || isCustomerArchived(snapshot.customer) || snapshot.archivePending) {
+        return;
+      }
+      setSnapshot({
+        archiveConfirmOpen: true,
+        archiveErrorMessage: null,
+        archiveErrorRetryable: false,
+        archiveRetryKind: null,
+      });
+    },
+    cancelArchiveConfirm() {
+      if (snapshot.archivePending) return;
+      setSnapshot({ archiveConfirmOpen: false });
+    },
+    confirmArchive(accessToken) {
+      return runArchiveAction(accessToken, "archive");
+    },
+    restoreCustomer(accessToken) {
+      return runArchiveAction(accessToken, "restore");
+    },
+    retryArchiveAction(accessToken) {
+      const kind = snapshot.archiveRetryKind;
+      if (!kind) return Promise.resolve("blocked" as const);
+      return runArchiveAction(accessToken, kind);
     },
     dispose() {
       disposed = true;
