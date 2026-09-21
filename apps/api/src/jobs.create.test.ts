@@ -215,6 +215,7 @@ test("valid same-workspace Customer creates draft Job with defaults", async () =
   assert.equal(job["no_site"], false);
   assert.equal(job["mode"], "quote");
   assert.equal((job["site_address"] as { line1: string }).line1, "500 Site Rd");
+  assert.deepEqual(job["customer"], { id: customer.id, name: "Active Cust" });
   assert.equal(job["workspace_id"], undefined);
   assert.equal(job["created_by"], undefined);
   assert.equal(job["internal_notes"], undefined);

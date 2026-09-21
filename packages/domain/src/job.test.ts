@@ -96,11 +96,13 @@ test("job list cursor round-trips and binds customer filter", () => {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     state: "all",
+    bucket: null,
     search: null,
   });
   const decoded = decodeJobListCursor(encoded, {
     customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     state: "all",
+    bucket: null,
     search: null,
   });
   assert.equal(decoded.id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
@@ -112,25 +114,41 @@ test("job list cursor rejects filter mismatch", () => {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     state: "all",
+    bucket: null,
     search: null,
   });
   assert.throws(() =>
     decodeJobListCursor(encoded, {
       customer_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       state: "all",
+      bucket: null,
       search: null,
     }),
   );
 });
 
-test("parseJobListQuery requires customer_id UUID and defaults state to all", () => {
-  const parsed = parseJobListQuery({
+test("parseJobListQuery customer_id defaults state to all; omit customer defaults bucket active", () => {
+  const scoped = parseJobListQuery({
     customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   });
-  assert.equal(parsed.customer_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-  assert.equal(parsed.state, "all");
-  assert.equal(parsed.limit, 25);
-  assert.throws(() => parseJobListQuery({}));
+  assert.equal(scoped.customer_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+  assert.equal(scoped.state, "all");
+  assert.equal(scoped.bucket, null);
+  assert.equal(scoped.limit, 25);
+
+  const general = parseJobListQuery({});
+  assert.equal(general.customer_id, null);
+  assert.equal(general.bucket, "active");
+  assert.equal(general.state, null);
+
   assert.throws(() => parseJobListQuery({ customer_id: "not-a-uuid" }));
-  assert.throws(() => parseJobListQuery({ customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", workspace_id: "w" }));
+  assert.throws(() =>
+    parseJobListQuery({ customer_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", workspace_id: "w" }),
+  );
+  assert.throws(() => parseJobListQuery({ bucket: "active", state: "all" }));
+});
+
+test("parseJobListQuery accepts S05 buckets", () => {
+  assert.equal(parseJobListQuery({ bucket: "finished" }).bucket, "finished");
+  assert.equal(parseJobListQuery({ bucket: "archived" }).bucket, "archived");
 });

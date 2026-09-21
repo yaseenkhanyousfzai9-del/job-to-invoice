@@ -294,6 +294,7 @@ export type CreatedJobDto = {
   lifecycle: string;
   updated_at: string;
   customer_id: string;
+  customer: { id: string; name: string };
   version: number;
   scope_version: number;
   no_site: boolean;

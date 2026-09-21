@@ -7,6 +7,7 @@ Status note: this file tracks implemented Expo Router screens. It is not a full 
 | PRD | Screen | Route | Status |
 |---|---|---|---|
 | S05 (partial) | Owner shell | `/(app)` | IMPLEMENTED — Create job / Customers / Add customer / Sign out |
+| S05 Jobs list API | General `GET /v1/jobs` + `bucket` | n/a (API) | VERIFIED — DEC-JOB-001 (2026-09-22). Android Jobs tab UI not started |
 | S06 | Create job + active Customer picker | `/(app)/jobs/new` | VERIFIED — physical Android 2026-09-22 |
 | S07 | New Customer | `/(app)/customers/new` | VERIFIED — also supports `returnTo=create-job` from S06 |
 | S07 | Edit Customer | `/(app)/customers/[id]/edit` | VERIFIED |
@@ -17,7 +18,7 @@ Status note: this file tracks implemented Expo Router screens. It is not a full 
 
 | PRD | Screen | Notes |
 |---|---|---|
-| S05 Jobs list | Jobs tab full list | Deferred |
+| S05 Jobs list | Jobs tab full list UI | Deferred — API prerequisite VERIFIED; Android UI not started |
 | S08 | Job overview / detail | Deferred — Create Job does not navigate here |
 | S09+ | Quote/invoice editors | Deferred |
 

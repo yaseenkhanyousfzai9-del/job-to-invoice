@@ -53,6 +53,7 @@ function sampleJob(overrides: Partial<JobSummary> = {}): JobSummary {
     lifecycle: "draft",
     updated_at: "2026-09-20T12:00:00.000Z",
     customer_id: "11111111-1111-4111-8111-111111111111",
+    customer: { id: "11111111-1111-4111-8111-111111111111", name: "Sample Customer" },
     ...overrides,
   };
 }

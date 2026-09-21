@@ -282,6 +282,7 @@ test("POST success and CUSTOMER_ARCHIVED and network / idempotency", async () =>
         lifecycle: "draft",
         updated_at: "t",
         customer_id: body.customer_id,
+        customer: { id: body.customer_id, name: "Picker Customer" },
         version: 1,
         scope_version: 0,
         no_site: body.no_site,

@@ -108,7 +108,8 @@ async function createCustomer(
   });
 }
 
-const PUBLIC_JOB_KEYS = new Set(["id", "title", "lifecycle", "updated_at", "customer_id"]);
+const PUBLIC_JOB_KEYS = new Set(["id", "title", "lifecycle", "updated_at", "customer_id", "customer"]);
+const PUBLIC_CUSTOMER_SUMMARY_KEYS = new Set(["id", "name"]);
 
 test("unauthenticated GET /v1/jobs → 401", async () => {
   const { app } = await createTestApp();
@@ -196,11 +197,19 @@ test("jobs for customer returned in (updated_at, id) DESC; other customer exclud
     for (const field of Object.keys(item)) {
       assert.ok(PUBLIC_JOB_KEYS.has(field), `unexpected job field ${field}`);
     }
+    const customer = item["customer"] as Record<string, unknown>;
+    assert.equal(typeof customer, "object");
+    for (const field of Object.keys(customer)) {
+      assert.ok(PUBLIC_CUSTOMER_SUMMARY_KEYS.has(field), `unexpected customer field ${field}`);
+    }
+    assert.equal(customer["id"], item["customer_id"]);
     assert.equal("workspace_id" in item, false);
     assert.equal("created_by" in item, false);
     assert.equal("internal_notes" in item, false);
     assert.equal("entitlement_origin" in item, false);
     assert.equal("version" in item, false);
+    assert.equal("email" in customer, false);
+    assert.equal("phone" in customer, false);
   }
   await app.close();
 });
@@ -243,7 +252,7 @@ test("unknown and cross-workspace customer_id → identical generic 404", async 
   await app.close();
 });
 
-test("malformed customer_id → 422; missing customer_id → 422", async () => {
+test("malformed customer_id → 422; missing customer_id → general Active list 200", async () => {
   const { app, token } = await createTestApp();
   const { access } = await readyOwner(app, token, "auth-jobs-bad", "badj@example.com", key(11));
   const malformed = await app.inject({
@@ -251,13 +260,15 @@ test("malformed customer_id → 422; missing customer_id → 422", async () => {
     url: "/v1/jobs?customer_id=not-a-uuid",
     headers: { authorization: `Bearer ${access}` },
   });
-  const missing = await app.inject({
+  const general = await app.inject({
     method: "GET",
     url: "/v1/jobs",
     headers: { authorization: `Bearer ${access}` },
   });
   assert.equal(malformed.statusCode, 422);
-  assert.equal(missing.statusCode, 422);
+  assert.equal(general.statusCode, 200);
+  const body = general.json() as { data: { items: unknown[]; next_cursor: string | null } };
+  assert.deepEqual(body.data.items, []);
   await app.close();
 });
 
@@ -304,5 +315,202 @@ test("jobs pagination cursor returns deterministic pages", async () => {
   assert.equal(secondBody.data.items.length, 1);
   assert.equal(secondBody.data.items[0]?.title, "Job 0");
   assert.equal(secondBody.data.next_cursor, null);
+  await app.close();
+});
+
+test("S05 general GET /v1/jobs defaults to Active bucket", async () => {
+  const { app, token, harness } = await createTestApp();
+  const owner = await readyOwner(app, token, "auth-s05-default", "s05d@example.com", key(40));
+  const created = await createCustomer(app, owner.access, { name: "Bucket Cust" }, key(41));
+  const customer = (created.json() as { data: { id: string } }).data;
+
+  await harness.createJob({
+    workspaceId: owner.workspaceId,
+    customerId: customer.id,
+    createdBy: owner.userId,
+    title: "Draft Job",
+    lifecycle: "draft",
+    id: key(50),
+  });
+  await harness.createJob({
+    workspaceId: owner.workspaceId,
+    customerId: customer.id,
+    createdBy: owner.userId,
+    title: "Finished Job",
+    lifecycle: "finished",
+    id: key(51),
+  });
+  await harness.createJob({
+    workspaceId: owner.workspaceId,
+    customerId: customer.id,
+    createdBy: owner.userId,
+    title: "Archived Job",
+    lifecycle: "archived",
+    id: key(52),
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/v1/jobs",
+    headers: { authorization: `Bearer ${owner.access}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json() as { data: { items: Array<{ title: string; lifecycle: string }> } };
+  assert.equal(body.data.items.length, 1);
+  assert.equal(body.data.items[0]?.title, "Draft Job");
+  await app.close();
+});
+
+test("S05 bucket Active/Finished/Archived lifecycle mapping", async () => {
+  const { app, token, harness } = await createTestApp();
+  const owner = await readyOwner(app, token, "auth-s05-buckets", "s05b@example.com", key(42));
+  const created = await createCustomer(app, owner.access, { name: "Map Cust" }, key(43));
+  const customer = (created.json() as { data: { id: string } }).data;
+
+  const fixtures: Array<{ title: string; lifecycle: "draft" | "active" | "invoiced" | "finished" | "canceled" | "archived"; id: string }> = [
+    { title: "L-draft", lifecycle: "draft", id: key(60) },
+    { title: "L-active", lifecycle: "active", id: key(61) },
+    { title: "L-invoiced", lifecycle: "invoiced", id: key(62) },
+    { title: "L-finished", lifecycle: "finished", id: key(63) },
+    { title: "L-canceled", lifecycle: "canceled", id: key(64) },
+    { title: "L-archived", lifecycle: "archived", id: key(65) },
+  ];
+  for (const fixture of fixtures) {
+    await harness.createJob({
+      workspaceId: owner.workspaceId,
+      customerId: customer.id,
+      createdBy: owner.userId,
+      title: fixture.title,
+      lifecycle: fixture.lifecycle,
+      id: fixture.id,
+    });
+  }
+
+  async function titles(bucket: string) {
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/jobs?bucket=${bucket}`,
+      headers: { authorization: `Bearer ${owner.access}` },
+    });
+    assert.equal(response.statusCode, 200);
+    const body = response.json() as { data: { items: Array<{ title: string }> } };
+    return body.data.items.map((item) => item.title).sort();
+  }
+
+  assert.deepEqual(await titles("active"), ["L-active", "L-draft", "L-invoiced"]);
+  assert.deepEqual(await titles("finished"), ["L-canceled", "L-finished"]);
+  assert.deepEqual(await titles("archived"), ["L-archived"]);
+  await app.close();
+});
+
+test("S05 search matches title and customer name; workspace isolation", async () => {
+  const { app, token, harness } = await createTestApp();
+  const a = await readyOwner(app, token, "auth-s05-search-a", "s05sa@example.com", key(44));
+  const b = await readyOwner(app, token, "auth-s05-search-b", "s05sb@example.com", key(45));
+  const ca = await createCustomer(app, a.access, { name: "Kitchen Owner" }, key(46));
+  const cb = await createCustomer(app, b.access, { name: "Kitchen Owner" }, key(47));
+  const customerA = (ca.json() as { data: { id: string } }).data;
+  const customerB = (cb.json() as { data: { id: string } }).data;
+
+  await harness.createJob({
+    workspaceId: a.workspaceId,
+    customerId: customerA.id,
+    createdBy: a.userId,
+    title: "Fence Repair",
+    lifecycle: "draft",
+    id: key(70),
+  });
+  await harness.createJob({
+    workspaceId: a.workspaceId,
+    customerId: customerA.id,
+    createdBy: a.userId,
+    title: "Kitchen Remodel",
+    lifecycle: "active",
+    id: key(71),
+  });
+  await harness.createJob({
+    workspaceId: b.workspaceId,
+    customerId: customerB.id,
+    createdBy: b.userId,
+    title: "Kitchen Remodel",
+    lifecycle: "draft",
+    id: key(72),
+  });
+
+  const byTitle = await app.inject({
+    method: "GET",
+    url: "/v1/jobs?search=Remodel",
+    headers: { authorization: `Bearer ${a.access}` },
+  });
+  assert.equal(byTitle.statusCode, 200);
+  const titleBody = byTitle.json() as {
+    data: { items: Array<{ title: string; customer: { name: string } }> };
+  };
+  assert.equal(titleBody.data.items.length, 1);
+  assert.equal(titleBody.data.items[0]?.title, "Kitchen Remodel");
+
+  const byCustomer = await app.inject({
+    method: "GET",
+    url: "/v1/jobs?search=Kitchen%20Owner",
+    headers: { authorization: `Bearer ${a.access}` },
+  });
+  assert.equal(byCustomer.statusCode, 200);
+  const nameBody = byCustomer.json() as {
+    data: { items: Array<{ title: string; customer: { id: string; name: string } }> };
+  };
+  assert.equal(nameBody.data.items.length, 2);
+  for (const item of nameBody.data.items) {
+    assert.equal(item.customer.name, "Kitchen Owner");
+    assert.equal(item.customer.id, customerA.id);
+  }
+  assert.equal(JSON.stringify(nameBody).includes(customerB.id), false);
+  await app.close();
+});
+
+test("bucket + state together ? 422; legacy state still works with customer_id", async () => {
+  const { app, token, harness } = await createTestApp();
+  const owner = await readyOwner(app, token, "auth-s05-conflict", "s05c@example.com", key(48));
+  const created = await createCustomer(app, owner.access, { name: "State Cust" }, key(49));
+  const customer = (created.json() as { data: { id: string } }).data;
+  await harness.createJob({
+    workspaceId: owner.workspaceId,
+    customerId: customer.id,
+    createdBy: owner.userId,
+    title: "Archived Only",
+    lifecycle: "archived",
+    id: key(73),
+  });
+  await harness.createJob({
+    workspaceId: owner.workspaceId,
+    customerId: customer.id,
+    createdBy: owner.userId,
+    title: "Draft Only",
+    lifecycle: "draft",
+    id: key(74),
+  });
+
+  const conflicted = await app.inject({
+    method: "GET",
+    url: "/v1/jobs?bucket=active&state=all",
+    headers: { authorization: `Bearer ${owner.access}` },
+  });
+  assert.equal(conflicted.statusCode, 422);
+
+  const legacy = await app.inject({
+    method: "GET",
+    url: `/v1/jobs?customer_id=${customer.id}&state=archived`,
+    headers: { authorization: `Bearer ${owner.access}` },
+  });
+  assert.equal(legacy.statusCode, 200);
+  const body = legacy.json() as { data: { items: Array<{ title: string }> } };
+  assert.equal(body.data.items.length, 1);
+  assert.equal(body.data.items[0]?.title, "Archived Only");
+  await app.close();
+});
+
+test("unauthenticated general GET /v1/jobs ? 401", async () => {
+  const { app } = await createTestApp();
+  const response = await app.inject({ method: "GET", url: "/v1/jobs" });
+  assert.equal(response.statusCode, 401);
   await app.close();
 });

@@ -204,3 +204,30 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** Yes for additional Unicode case-folding details; not for the no-Gmail-rewrite rule.  
 **Migration/API implication:** `customers.normalized_email` stores this lookup form only.  
 **Status:** ACCEPTED
+
+---
+
+## DEC-JOB-001
+
+**ID:** DEC-JOB-001  
+**Date:** 2026-09-22  
+**Question:** How do S05 Jobs-tab Active / Finished / Archived filters map onto JOB01 lifecycles, and how does general `GET /v1/jobs` coexist with customer-scoped listing?  
+**Decision:**
+- Introduce explicit `bucket=active|finished|archived` for the S05 Jobs tab. Buckets are mutually exclusive:
+  - **Active** = `lifecycle IN ('draft','active','invoiced')`
+  - **Finished** = `lifecycle IN ('finished','canceled')`
+  - **Archived** = `lifecycle = 'archived'`
+- When `customer_id` is omitted, general workspace list defaults to **Active** (`bucket=active`).
+- When `customer_id` is supplied, preserve CUST-API-03 behaviour: customer must be same-workspace or generic 404; default remains legacy `state=all` when neither `bucket` nor `state` is supplied.
+- Keep legacy `state` (`all` | `active` (= not archived) | `archived` | specific lifecycle) for backward compatibility. Supplying both `bucket` and `state` → 422 ambiguous query.
+- S05 search: case-insensitive partial match on **Job title** and **Customer name** only (not site, UUID, email, phone, or internal notes).
+- Job card DTO extends JobSummary with `customer: { id, name }` via a workspace-safe join (no N+1). No site summary in this slice. Do not expose workspace_id, created_by, emails, phones, internal_notes, or entitlement fields.
+- Ordering `(updated_at, id) DESC`; opaque cursor bound to `customer_id`, `bucket`/`state`, and `search`; limit default 25 / max 100.
+- Archived visibility uses `lifecycle='archived'` only; `archived_from_state` is not the S05 bucket selector.
+
+**PRD evidence:** S05 Active/Finished/Archived filters; JOB01 lifecycles; GET /jobs search/state/archive/page; DEC-CUST-006 customer_id filter; API02 list conventions.  
+**Reason:** Legacy `state=active` (not archived) would place Finished jobs in the Active tab. Explicit buckets keep tabs exclusive and keep canceled jobs visible under Finished.  
+**Requirements affected:** S05, GET /v1/jobs, JOB01, DEC-CUST-006, CUST-API-03  
+**Reversible:** Yes for search/card field expansion; not for inventing overlapping Active/Finished membership.  
+**Migration/API implication:** Additive query `bucket`; optional `customer_id`; additive response `customer` summary. No schema change.  
+**Status:** ACCEPTED

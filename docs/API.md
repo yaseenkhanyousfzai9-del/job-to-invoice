@@ -345,7 +345,7 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 ## GET /v1/jobs
 
-PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 (DEC-CUST-006). This is not a second jobs datastore.
+PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 (DEC-CUST-006). S05 Jobs-tab buckets: DEC-JOB-001. This is not a second jobs datastore.
 
 | | |
 |---|---|
@@ -354,20 +354,38 @@ PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 
 | Authorization | Owner workspace. If `customer_id` is present, that customer must belong to the same workspace or the call is generic 404 |
 | Idempotency-Key | No |
 | If-Match | No |
-| Entities | `jobs` (and existence check on `customers` when filtered) |
+| Entities | `jobs` joined to `customers` for card name (same workspace); existence check on `customers` when `customer_id` filtered |
 | Tenant isolation | Never return another workspace’s jobs. Foreign `customer_id` is 404, not an empty list (avoids existence oracle vs GET customer) |
 
-**Query.** `customer_id` (required for CUST-API-03 / S19 associated jobs), `cursor?`, `limit?` (default 25, max 100), `search?`, `state?` (`all` default, `active`, `archived`, or a lifecycle). Broader unfiltered workspace job list remains deferred with POST /jobs (CUST-JOB-01).
+**Query.**
+- `customer_id?` — omit for S05 general workspace list; supply for S19 associated jobs (DEC-CUST-006).
+- `bucket?` — S05 Jobs-tab filter: `active` | `finished` | `archived` (DEC-JOB-001).
+- `state?` — legacy: `all` | `active` (lifecycle <> archived) | `archived` | a specific lifecycle. Mutually exclusive with `bucket` (both → 422).
+- `cursor?`, `limit?` (default 25, max 100), `search?` (Job title + Customer name, trim, case-insensitive partial).
 
-**Ordering.** `(updated_at, id) DESC` (matches `jobs_workspace_customer_updated_id_idx`).
+**Defaults.**
+- `customer_id` omitted and neither `bucket` nor `state` → **`bucket=active`** (S05).
+- `customer_id` supplied and neither `bucket` nor `state` → **`state=all`** (CUST-API-03 preserved).
 
-**Response `data`.** `{ items, next_cursor }` with job summary fields sufficient for S19: `id`, `title`, `lifecycle`, `updated_at`, `customer_id`. Do not include `workspace_id`, `created_by`, `internal_notes`, entitlement, or version fields. Do not include internal notes on a Customer screen if avoidable; S19 needs associated jobs, not a full job editor.
+**S05 bucket lifecycle sets (DEC-JOB-001).**
+- Active → `draft`, `active`, `invoiced`
+- Finished → `finished`, `canceled`
+- Archived → `archived`  
+Archived bucket uses `lifecycle='archived'` only (not `archived_from_state`).
 
-**Errors.** 401; 404 if `customer_id` not in workspace (unknown and cross-tenant identical); 422 query (including missing/malformed `customer_id`).
+**Ordering.** `(updated_at, id) DESC`.
 
-**Tests.** Filter returns only that customer’s jobs; other owner’s customer_id 404; empty jobs for a valid own customer is `items: []`, not 404. **Evidence (CUST-API-03, 2026-09-21):** `jobs.list.test.ts` + live `jobs.list.live.test.ts` on `vlpjaamdjtmtqtpwbhzq`.
+**Response `data`.** `{ items, next_cursor }` JobSummary:
+`id`, `title`, `lifecycle`, `updated_at`, `customer_id`, `customer: { id, name }`.  
+Do not include `workspace_id`, `created_by`, `internal_notes`, entitlement, version, customer email/phone, or site summary in this slice.
 
-Full Jobs feature (lifecycle actions, documents, unfiltered list, POST) is out of scope except as needed for this filter; POST below remains CUST-JOB-01.
+**Errors.** 401; 404 if `customer_id` not in workspace (unknown and cross-tenant identical); 422 query (malformed `customer_id`, invalid `bucket`/`state`/`limit`/`cursor`, or both `bucket` and `state`).
+
+**Tests.** General Active default; bucket mappings; title/name search; isolation; cursor; customer-scoped regression; create appears on list. Memory `jobs.list.test.ts` + live `jobs.list.live.test.ts` + `jobs.list.s05.live.test.ts` on `vlpjaamdjtmtqtpwbhzq`.
+
+**Evidence (S05 Jobs-list API, 2026-09-22):** DEC-JOB-001 recorded. General `GET /v1/jobs` + `bucket` + title/customer-name search + customer summary DTO. Customer-scoped `GET /v1/jobs?customer_id=` remains VERIFIED. Android S05 Jobs list UI is **not** claimed.
+
+Full Jobs feature (lifecycle mutation APIs, documents, Job detail S08, Android Jobs tab) remains out of scope except create (CUST-JOB-01) and this list prerequisite.
 
 ---
 
@@ -391,7 +409,7 @@ PRD: client UUID, customer, title, site, mode; create draft.
 
 **Server defaults.** `lifecycle=draft`, `version=1`, `scope_version=0`. Client cannot set workspace/lifecycle/version/scope/entitlement/internal fields. `mode` is accepted for the create contract (future `job_created` analytics); document draft rows are not created in this slice.
 
-**Response `data`.** Created job: JobSummary fields (`id`, `title`, `lifecycle`, `updated_at`, `customer_id`) plus `version`, `scope_version`, `no_site`, `site_address`, `mode`. Do not include `workspace_id`, `created_by`, `internal_notes`, or entitlement fields.
+**Response `data`.** Created job: JobSummary fields (`id`, `title`, `lifecycle`, `updated_at`, `customer_id`, `customer: { id, name }`) plus `version`, `scope_version`, `no_site`, `site_address`, `mode`. Do not include `workspace_id`, `created_by`, `internal_notes`, or entitlement fields.
 
 Do not implement quote editor here. Creating the draft document row may wait for Quote; a job header is enough for Customer reference tests if domain requires a draft — if `document_drafts` is not migrated yet, persist the job only.
 

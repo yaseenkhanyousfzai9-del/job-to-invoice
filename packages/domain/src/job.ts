@@ -21,13 +21,20 @@ export type JobLifecycle = (typeof JOB_LIFECYCLES)[number];
 export const JOB_MODES = ["quote", "direct_invoice"] as const;
 export type JobMode = (typeof JOB_MODES)[number];
 
-/** Public job summary for S19 associated jobs (DEC-CUST-006). */
+/** Minimal public customer summary on Job cards (DEC-JOB-001 / S05). */
+export type JobCustomerSummary = {
+  id: string;
+  name: string;
+};
+
+/** Public job summary for S19 associated jobs and S05 Jobs list (DEC-CUST-006, DEC-JOB-001). */
 export type JobSummary = {
   id: string;
   title: string;
   lifecycle: JobLifecycle;
   updated_at: string;
   customer_id: string;
+  customer: JobCustomerSummary;
 };
 
 /** Create response: JobSummary plus create-time confirmation fields (not entitlement/internal). */
@@ -88,21 +95,40 @@ const CREATE_FORBIDDEN_SERVER_FIELDS = [
 ] as const;
 
 /**
- * Job list filter for GET /v1/jobs.
- * `customer_id` is required for CUST-API-03 associated-jobs reads.
- * `state`: `all` (default), `active` (not archived), `archived`, or a specific lifecycle.
+ * Legacy `state` filter for GET /v1/jobs (customer-scoped and general).
+ * `active` means lifecycle <> archived (legacy; not the S05 Active bucket).
  */
 export type JobListState = "all" | "active" | "archived" | JobLifecycle;
 
+/**
+ * S05 Jobs-tab buckets (DEC-JOB-001). Mutually exclusive with `state`.
+ * active → draft|active|invoiced; finished → finished|canceled; archived → archived.
+ */
+export type JobListBucket = "active" | "finished" | "archived";
+
+export const JOB_BUCKET_LIFECYCLES: Record<JobListBucket, readonly JobLifecycle[]> = {
+  active: ["draft", "active", "invoiced"],
+  finished: ["finished", "canceled"],
+  archived: ["archived"],
+};
+
 export type JobListQuery = {
-  customer_id: string;
+  /** Required for S19 customer-scoped list; omitted for S05 workspace list. */
+  customer_id: string | null;
   cursor: string | null;
   limit: number;
   search: string | null;
-  state: JobListState;
+  /** Legacy state filter. Null when `bucket` is set. */
+  state: JobListState | null;
+  /** S05 Jobs-tab bucket. Null when legacy `state` is set. */
+  bucket: JobListBucket | null;
 };
 
-const LIST_ALLOWED = new Set(["customer_id", "cursor", "limit", "search", "state"]);
+const LIST_ALLOWED = new Set(["customer_id", "cursor", "limit", "search", "state", "bucket"]);
+
+function isJobListBucket(value: unknown): value is JobListBucket {
+  return value === "active" || value === "finished" || value === "archived";
+}
 
 function rejectUnknownKeys(
   body: Record<string, unknown>,
@@ -222,13 +248,13 @@ export function parseJobListQuery(raw: unknown): JobListQuery {
   const fieldErrors: Record<string, string[]> = {};
   rejectUnknownKeys(body, LIST_ALLOWED, fieldErrors);
 
-  let customerId: string | undefined;
-  if (body["customer_id"] === undefined || body["customer_id"] === null) {
-    fieldErrors["customer_id"] = ["customer_id is required."];
-  } else if (typeof body["customer_id"] !== "string" || !isUuid(body["customer_id"])) {
-    fieldErrors["customer_id"] = ["customer_id must be a UUID."];
-  } else {
-    customerId = body["customer_id"];
+  let customerId: string | null = null;
+  if (body["customer_id"] !== undefined && body["customer_id"] !== null) {
+    if (typeof body["customer_id"] !== "string" || !isUuid(body["customer_id"])) {
+      fieldErrors["customer_id"] = ["customer_id must be a UUID."];
+    } else {
+      customerId = body["customer_id"];
+    }
   }
 
   let search: string | null = null;
@@ -271,8 +297,23 @@ export function parseJobListQuery(raw: unknown): JobListQuery {
     }
   }
 
-  let state: JobListState = "all";
-  if (body["state"] !== undefined && body["state"] !== null) {
+  const hasState = body["state"] !== undefined && body["state"] !== null;
+  const hasBucket = body["bucket"] !== undefined && body["bucket"] !== null;
+  if (hasState && hasBucket) {
+    fieldErrors["bucket"] = ["Do not supply both bucket and state."];
+    fieldErrors["state"] = ["Do not supply both bucket and state."];
+  }
+
+  let state: JobListState | null = null;
+  let bucket: JobListBucket | null = null;
+
+  if (hasBucket) {
+    if (!isJobListBucket(body["bucket"])) {
+      fieldErrors["bucket"] = ["Bucket must be active, finished, or archived."];
+    } else {
+      bucket = body["bucket"];
+    }
+  } else if (hasState) {
     if (
       body["state"] !== "all" &&
       body["state"] !== "active" &&
@@ -283,6 +324,12 @@ export function parseJobListQuery(raw: unknown): JobListQuery {
     } else {
       state = body["state"] as JobListState;
     }
+  } else if (customerId === null) {
+    // S05 general list default (DEC-JOB-001).
+    bucket = "active";
+  } else {
+    // Customer-scoped default remains all (CUST-API-03).
+    state = "all";
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -290,10 +337,22 @@ export function parseJobListQuery(raw: unknown): JobListQuery {
   }
 
   return {
-    customer_id: customerId as string,
+    customer_id: customerId,
     cursor,
     limit,
     search,
     state,
+    bucket,
   };
+}
+
+export function jobMatchesListState(lifecycle: JobLifecycle, state: JobListState): boolean {
+  if (state === "all") return true;
+  if (state === "active") return lifecycle !== "archived";
+  if (state === "archived") return lifecycle === "archived";
+  return lifecycle === state;
+}
+
+export function jobMatchesListBucket(lifecycle: JobLifecycle, bucket: JobListBucket): boolean {
+  return (JOB_BUCKET_LIFECYCLES[bucket] as readonly string[]).includes(lifecycle);
 }

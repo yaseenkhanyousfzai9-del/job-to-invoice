@@ -46,6 +46,7 @@ function sampleJob(overrides: Partial<JobSummary> = {}): JobSummary {
     lifecycle: "draft",
     updated_at: "2026-09-21T00:00:00.000Z",
     customer_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    customer: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", name: "Delete Sample" },
     ...overrides,
   };
 }

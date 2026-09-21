@@ -5,6 +5,8 @@ import {
   decodeJobListCursor,
   encodeCustomerListCursor,
   encodeJobListCursor,
+  jobMatchesListBucket,
+  jobMatchesListState,
   nextArchivedAt,
 } from "@job-to-invoice/domain";
 import type {
@@ -67,21 +69,15 @@ function toCustomer(row: CustomerRow): Customer {
   };
 }
 
-function toJobSummary(row: JobRow): JobSummary {
+function toJobSummary(row: JobRow, customerName: string): JobSummary {
   return {
     id: row.id,
     title: row.title,
     lifecycle: row.lifecycle,
     updated_at: row.updated_at,
     customer_id: row.customer_id,
+    customer: { id: row.customer_id, name: customerName },
   };
-}
-
-function jobMatchesState(row: JobRow, state: string): boolean {
-  if (state === "all") return true;
-  if (state === "active") return row.lifecycle !== "archived";
-  if (state === "archived") return row.lifecycle === "archived";
-  return row.lifecycle === state;
 }
 
 export function createMemoryAuthStore(): MemoryAuthHarness {
@@ -93,6 +89,11 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
     jobsByWorkspace: new Map(),
     idempotency: new Map(),
   };
+
+  function resolveCustomerName(workspaceId: string, customerId: string): string {
+    const customers = state.customersByWorkspace.get(workspaceId) ?? [];
+    return customers.find((row) => row.id === customerId)?.name ?? "";
+  }
 
   const tx: OwnerTx = {
     async findUserByAuthId(authUserId) {
@@ -339,7 +340,8 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
     },
     async createJob(input) {
       const customers = state.customersByWorkspace.get(input.workspaceId) ?? [];
-      if (!customers.some((row) => row.id === input.fields.customer_id)) {
+      const customer = customers.find((row) => row.id === input.fields.customer_id);
+      if (!customer) {
         throw new Error("customer missing for job");
       }
       const rows = state.jobsByWorkspace.get(input.workspaceId) ?? [];
@@ -359,7 +361,7 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       rows.push(row);
       state.jobsByWorkspace.set(input.workspaceId, rows);
       return {
-        ...toJobSummary(row),
+        ...toJobSummary(row, customer.name),
         version: 1,
         scope_version: 0,
         no_site: input.fields.no_site,
@@ -371,13 +373,24 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
     },
     async listJobs(input) {
       const query = input.query;
-      let rows = [...(state.jobsByWorkspace.get(input.workspaceId) ?? [])].filter(
-        (row) => row.customer_id === query.customer_id,
-      );
-      rows = rows.filter((row) => jobMatchesState(row, query.state));
+      let rows = [...(state.jobsByWorkspace.get(input.workspaceId) ?? [])];
+      if (query.customer_id !== null) {
+        rows = rows.filter((row) => row.customer_id === query.customer_id);
+      }
+      if (query.bucket !== null) {
+        rows = rows.filter((row) => jobMatchesListBucket(row.lifecycle, query.bucket!));
+      } else if (query.state !== null) {
+        rows = rows.filter((row) => jobMatchesListState(row.lifecycle, query.state!));
+      }
       if (query.search) {
         const needle = query.search.toLowerCase();
-        rows = rows.filter((row) => row.title.toLowerCase().includes(needle));
+        rows = rows.filter((row) => {
+          const titleMatch = row.title.toLowerCase().includes(needle);
+          const nameMatch = resolveCustomerName(input.workspaceId, row.customer_id)
+            .toLowerCase()
+            .includes(needle);
+          return titleMatch || nameMatch;
+        });
       }
       rows.sort((a, b) => {
         if (a.updated_at === b.updated_at) {
@@ -389,6 +402,7 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
         const cursor = decodeJobListCursor(query.cursor, {
           customer_id: query.customer_id,
           state: query.state,
+          bucket: query.bucket,
           search: query.search,
         });
         rows = rows.filter((row) => {
@@ -403,7 +417,9 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       }
       const page = rows.slice(0, query.limit + 1);
       const hasMore = page.length > query.limit;
-      const items = (hasMore ? page.slice(0, query.limit) : page).map(toJobSummary);
+      const items = (hasMore ? page.slice(0, query.limit) : page).map((row) =>
+        toJobSummary(row, resolveCustomerName(input.workspaceId, row.customer_id)),
+      );
       const last = items[items.length - 1];
       const next_cursor =
         hasMore && last
@@ -412,6 +428,7 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
               id: last.id,
               customer_id: query.customer_id,
               state: query.state,
+              bucket: query.bucket,
               search: query.search,
             })
           : null;
@@ -483,11 +500,22 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
         }
         const bundle = await ownerTx.findWorkspaceByOwner(user.id);
         if (!bundle) {
-          return { status: "customer_not_found" as const };
+          if (query.customer_id !== null) {
+            return { status: "customer_not_found" as const };
+          }
+          return {
+            status: "ok" as const,
+            userId: user.id,
+            displayEmail: user.display_email,
+            accountStatus: user.status,
+            page: { items: [], next_cursor: null },
+          };
         }
-        const customer = await ownerTx.getCustomer(bundle.workspace.id, query.customer_id);
-        if (!customer) {
-          return { status: "customer_not_found" as const };
+        if (query.customer_id !== null) {
+          const customer = await ownerTx.getCustomer(bundle.workspace.id, query.customer_id);
+          if (!customer) {
+            return { status: "customer_not_found" as const };
+          }
         }
         const page = await ownerTx.listJobs({
           workspaceId: bundle.workspace.id,
@@ -529,7 +557,8 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
     async createJob(input) {
       const now = input.updatedAt ?? new Date().toISOString();
       const customers = state.customersByWorkspace.get(input.workspaceId) ?? [];
-      if (!customers.some((row) => row.id === input.customerId)) {
+      const customer = customers.find((row) => row.id === input.customerId);
+      if (!customer) {
         throw new Error("customer missing");
       }
       const rows = state.jobsByWorkspace.get(input.workspaceId) ?? [];
@@ -545,7 +574,7 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       };
       rows.push(row);
       state.jobsByWorkspace.set(input.workspaceId, rows);
-      return toJobSummary(row);
+      return toJobSummary(row, customer.name);
     },
   };
 }

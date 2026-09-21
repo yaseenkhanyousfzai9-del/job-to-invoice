@@ -6,6 +6,7 @@ import type {
   Customer,
   CustomerListQuery,
   DuplicateCustomerMatch,
+  JobLifecycle,
   JobListQuery,
   JobSummary,
   UpdateCustomerInput,
@@ -112,7 +113,12 @@ export type CustomerRow = Customer & {
   created_by: string;
 };
 
-export type JobRow = JobSummary & {
+export type JobRow = {
+  id: string;
+  title: string;
+  lifecycle: JobLifecycle;
+  updated_at: string;
+  customer_id: string;
   workspace_id: string;
   created_at: string;
   created_by: string;

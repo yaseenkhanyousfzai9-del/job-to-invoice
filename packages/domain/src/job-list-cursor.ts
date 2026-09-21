@@ -1,5 +1,5 @@
 import { validationFailed } from "./errors.ts";
-import type { JobListState } from "./job.ts";
+import type { JobListBucket, JobListState } from "./job.ts";
 
 export type JobListCursorPayload = {
   updated_at: string;
@@ -7,18 +7,32 @@ export type JobListCursorPayload = {
 };
 
 type BoundCursor = JobListCursorPayload & {
-  customer_id: string;
-  state: JobListState;
+  customer_id: string | null;
+  state: JobListState | null;
+  bucket: JobListBucket | null;
   search: string | null;
 };
 
-/** Opaque cursor for GET /v1/jobs bound to customer_id + filters. */
+function cursorCustomerKey(customerId: string | null): string {
+  return customerId ?? "";
+}
+
+function cursorStateKey(state: JobListState | null): string {
+  return state ?? "";
+}
+
+function cursorBucketKey(bucket: JobListBucket | null): string {
+  return bucket ?? "";
+}
+
+/** Opaque cursor for GET /v1/jobs bound to customer_id + bucket/state + search. */
 export function encodeJobListCursor(input: BoundCursor): string {
   const json = JSON.stringify({
     u: input.updated_at,
     i: input.id,
-    c: input.customer_id,
-    s: input.state,
+    c: cursorCustomerKey(input.customer_id),
+    s: cursorStateKey(input.state),
+    b: cursorBucketKey(input.bucket),
     q: input.search ?? "",
   });
   return Buffer.from(json, "utf8").toString("base64url");
@@ -26,7 +40,12 @@ export function encodeJobListCursor(input: BoundCursor): string {
 
 export function decodeJobListCursor(
   raw: string,
-  expected: { customer_id: string; state: JobListState; search: string | null },
+  expected: {
+    customer_id: string | null;
+    state: JobListState | null;
+    bucket: JobListBucket | null;
+    search: string | null;
+  },
 ): JobListCursorPayload {
   let parsed: unknown;
   try {
@@ -43,6 +62,7 @@ export function decodeJobListCursor(
   const id = record["i"];
   const customerId = record["c"];
   const state = record["s"];
+  const bucket = record["b"];
   const search = record["q"];
   if (typeof updatedAt !== "string" || updatedAt.length === 0) {
     throw validationFailed({ cursor: ["Cursor is invalid."] });
@@ -50,10 +70,15 @@ export function decodeJobListCursor(
   if (typeof id !== "string" || id.length === 0) {
     throw validationFailed({ cursor: ["Cursor is invalid."] });
   }
-  if (customerId !== expected.customer_id) {
+  if (customerId !== cursorCustomerKey(expected.customer_id)) {
     throw validationFailed({ cursor: ["Cursor is invalid."] });
   }
-  if (state !== expected.state) {
+  if (state !== cursorStateKey(expected.state)) {
+    throw validationFailed({ cursor: ["Cursor is invalid."] });
+  }
+  // Legacy cursors (pre-bucket) omit `b`; treat missing as "".
+  const bucketValue = bucket === undefined ? "" : bucket;
+  if (typeof bucketValue !== "string" || bucketValue !== cursorBucketKey(expected.bucket)) {
     throw validationFailed({ cursor: ["Cursor is invalid."] });
   }
   const expectedSearch = expected.search ?? "";

@@ -5,6 +5,7 @@ import {
   encodeCustomerListCursor,
   encodeJobListCursor,
   escapeLikePattern,
+  JOB_BUCKET_LIFECYCLES,
   nextArchivedAt,
 } from "@job-to-invoice/domain";
 import type {
@@ -36,6 +37,24 @@ function asStatus(value: string): AccountStatus {
     return value;
   }
   return "active";
+}
+
+function mapJobSummaryRow(row: {
+  id: string;
+  title: string;
+  lifecycle: string;
+  updated_at: string;
+  customer_id: string;
+  customer_name: string;
+}): JobSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    lifecycle: row.lifecycle as JobLifecycle,
+    updated_at: row.updated_at,
+    customer_id: row.customer_id,
+    customer: { id: row.customer_id, name: row.customer_name },
+  };
 }
 
 function asTrade(value: string): WorkspaceTrade {
@@ -681,30 +700,48 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                   lifecycle: string;
                   updated_at: string;
                   customer_id: string;
+                  customer_name: string;
                   version: number;
                   scope_version: number;
                   no_site: boolean;
                   site_address_json: unknown;
                 }[]
               >`
-                insert into app.jobs (
-                  id, workspace_id, customer_id, title,
-                  site_address_json, no_site,
-                  created_by, created_at, updated_at
-                ) values (
-                  ${input.fields.id}::uuid,
-                  ${input.workspaceId}::uuid,
-                  ${input.fields.customer_id}::uuid,
-                  ${input.fields.title},
-                  ${siteJson}::jsonb,
-                  ${input.fields.no_site},
-                  ${input.createdBy}::uuid,
-                  ${input.now}::timestamptz,
-                  ${input.now}::timestamptz
+                with inserted as (
+                  insert into app.jobs (
+                    id, workspace_id, customer_id, title,
+                    site_address_json, no_site,
+                    created_by, created_at, updated_at
+                  ) values (
+                    ${input.fields.id}::uuid,
+                    ${input.workspaceId}::uuid,
+                    ${input.fields.customer_id}::uuid,
+                    ${input.fields.title},
+                    ${siteJson}::jsonb,
+                    ${input.fields.no_site},
+                    ${input.createdBy}::uuid,
+                    ${input.now}::timestamptz,
+                    ${input.now}::timestamptz
+                  )
+                  returning
+                    id, workspace_id, title, lifecycle, updated_at, customer_id,
+                    version, scope_version, no_site, site_address_json
                 )
-                returning
-                  id, title, lifecycle, updated_at, customer_id,
-                  version, scope_version, no_site, site_address_json
+                select
+                  i.id,
+                  i.title,
+                  i.lifecycle,
+                  i.updated_at,
+                  i.customer_id,
+                  c.name as customer_name,
+                  i.version,
+                  i.scope_version,
+                  i.no_site,
+                  i.site_address_json
+                from inserted i
+                join app.customers c
+                  on c.workspace_id = i.workspace_id
+                  and c.id = i.customer_id
               `;
               const row = rows[0];
               if (!row) {
@@ -720,6 +757,7 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                 lifecycle: row.lifecycle as JobLifecycle,
                 updated_at: row.updated_at,
                 customer_id: row.customer_id,
+                customer: { id: row.customer_id, name: row.customer_name },
                 version: row.version,
                 scope_version: row.scope_version,
                 no_site: row.no_site,
@@ -743,34 +781,44 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               ? decodeJobListCursor(query.cursor, {
                   customer_id: query.customer_id,
                   state: query.state,
+                  bucket: query.bucket,
                   search: query.search,
                 })
               : null;
             const searchPattern =
               query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
 
-            const stateFilter =
-              query.state === "all"
+            const customerFilter =
+              query.customer_id === null
                 ? tx``
-                : query.state === "active"
-                  ? tx`and lifecycle <> 'archived'`
-                  : query.state === "archived"
-                    ? tx`and lifecycle = 'archived'`
-                    : tx`and lifecycle = ${query.state}`;
-
+                : tx`and j.customer_id = ${query.customer_id}::uuid`;
+            const bucketLifecycles =
+              query.bucket !== null ? [...JOB_BUCKET_LIFECYCLES[query.bucket]] : null;
+            const lifecycleFilter =
+              bucketLifecycles !== null
+                ? tx`and j.lifecycle = any(${bucketLifecycles}::text[])`
+                : query.state === null || query.state === "all"
+                  ? tx``
+                  : query.state === "active"
+                    ? tx`and j.lifecycle <> 'archived'`
+                    : query.state === "archived"
+                      ? tx`and j.lifecycle = 'archived'`
+                      : tx`and j.lifecycle = ${query.state}`;
             const searchFilter =
               searchPattern === null
                 ? tx``
-                : tx`and title ilike ${searchPattern} escape '\\'`;
-
+                : tx`and (
+                    j.title ilike ${searchPattern} escape '\\'
+                    or c.name ilike ${searchPattern} escape '\\'
+                  )`;
             const cursorFilter =
               cursor === null
                 ? tx``
                 : tx`and (
-                    updated_at < ${cursor.updated_at}::timestamptz
+                    j.updated_at < ${cursor.updated_at}::timestamptz
                     or (
-                      updated_at = ${cursor.updated_at}::timestamptz
-                      and id < ${cursor.id}::uuid
+                      j.updated_at = ${cursor.updated_at}::timestamptz
+                      and j.id < ${cursor.id}::uuid
                     )
                   )`;
 
@@ -781,28 +829,32 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                 lifecycle: string;
                 updated_at: string;
                 customer_id: string;
+                customer_name: string;
               }[]
             >`
-              select id, title, lifecycle, updated_at, customer_id
-              from app.jobs
-              where workspace_id = ${input.workspaceId}::uuid
-                and customer_id = ${query.customer_id}::uuid
-              ${stateFilter}
+              select
+                j.id,
+                j.title,
+                j.lifecycle,
+                j.updated_at,
+                j.customer_id,
+                c.name as customer_name
+              from app.jobs j
+              join app.customers c
+                on c.workspace_id = j.workspace_id
+                and c.id = j.customer_id
+              where j.workspace_id = ${input.workspaceId}::uuid
+              ${customerFilter}
+              ${lifecycleFilter}
               ${searchFilter}
               ${cursorFilter}
-              order by updated_at desc, id desc
+              order by j.updated_at desc, j.id desc
               limit ${query.limit + 1}
             `;
 
             const hasMore = rows.length > query.limit;
             const page = hasMore ? rows.slice(0, query.limit) : rows;
-            const items: JobSummary[] = page.map((row) => ({
-              id: row.id,
-              title: row.title,
-              lifecycle: row.lifecycle as JobLifecycle,
-              updated_at: row.updated_at,
-              customer_id: row.customer_id,
-            }));
+            const items = page.map(mapJobSummaryRow);
             const last = items[items.length - 1];
             const next_cursor =
               hasMore && last
@@ -811,6 +863,7 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                     id: last.id,
                     customer_id: query.customer_id,
                     state: query.state,
+                    bucket: query.bucket,
                     search: query.search,
                   })
                 : null;
@@ -1101,7 +1154,7 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
             display_email: string;
             status: string;
             workspace_id: string | null;
-            customer_exists: boolean;
+            customer_exists: boolean | null;
           }[]
         >`
           with owner as (
@@ -1127,12 +1180,15 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
             ) as workspace_guc
           ),
           customer_check as (
-            select exists(
-              select 1
-              from app.customers c
-              where c.workspace_id = (select workspace_id from owner)
-                and c.id = ${query.customer_id}::uuid
-            ) as customer_exists
+            select case
+              when ${query.customer_id === null} then true
+              else exists(
+                select 1
+                from app.customers c
+                where c.workspace_id = (select workspace_id from owner)
+                  and c.id = ${query.customer_id ?? "00000000-0000-4000-8000-000000000000"}::uuid
+              )
+            end as customer_exists
           )
           select
             owner.id,
@@ -1151,42 +1207,62 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
         }
 
         const accountStatus = asStatus(owner.status);
-        if (!owner.workspace_id || !owner.customer_exists) {
+        if (query.customer_id !== null && (!owner.workspace_id || !owner.customer_exists)) {
           return { status: "customer_not_found" as const };
+        }
+
+        if (!owner.workspace_id) {
+          return {
+            status: "ok" as const,
+            userId: owner.id,
+            displayEmail: owner.display_email,
+            accountStatus,
+            page: { items: [], next_cursor: null },
+          };
         }
 
         const cursor = query.cursor
           ? decodeJobListCursor(query.cursor, {
               customer_id: query.customer_id,
               state: query.state,
+              bucket: query.bucket,
               search: query.search,
             })
           : null;
         const searchPattern =
           query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
 
-        const stateFilter =
-          query.state === "all"
+        const customerFilter =
+          query.customer_id === null
             ? tx``
-            : query.state === "active"
-              ? tx`and lifecycle <> 'archived'`
-              : query.state === "archived"
-                ? tx`and lifecycle = 'archived'`
-                : tx`and lifecycle = ${query.state}`;
-
+            : tx`and j.customer_id = ${query.customer_id}::uuid`;
+        const bucketLifecycles =
+          query.bucket !== null ? [...JOB_BUCKET_LIFECYCLES[query.bucket]] : null;
+        const lifecycleFilter =
+          bucketLifecycles !== null
+            ? tx`and j.lifecycle = any(${bucketLifecycles}::text[])`
+            : query.state === null || query.state === "all"
+              ? tx``
+              : query.state === "active"
+                ? tx`and j.lifecycle <> 'archived'`
+                : query.state === "archived"
+                  ? tx`and j.lifecycle = 'archived'`
+                  : tx`and j.lifecycle = ${query.state}`;
         const searchFilter =
           searchPattern === null
             ? tx``
-            : tx`and title ilike ${searchPattern} escape '\\'`;
-
+            : tx`and (
+                j.title ilike ${searchPattern} escape '\\'
+                or c.name ilike ${searchPattern} escape '\\'
+              )`;
         const cursorFilter =
           cursor === null
             ? tx``
             : tx`and (
-                updated_at < ${cursor.updated_at}::timestamptz
+                j.updated_at < ${cursor.updated_at}::timestamptz
                 or (
-                  updated_at = ${cursor.updated_at}::timestamptz
-                  and id < ${cursor.id}::uuid
+                  j.updated_at = ${cursor.updated_at}::timestamptz
+                  and j.id < ${cursor.id}::uuid
                 )
               )`;
 
@@ -1197,28 +1273,32 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
             lifecycle: string;
             updated_at: string;
             customer_id: string;
+            customer_name: string;
           }[]
         >`
-          select id, title, lifecycle, updated_at, customer_id
-          from app.jobs
-          where workspace_id = ${owner.workspace_id}::uuid
-            and customer_id = ${query.customer_id}::uuid
-          ${stateFilter}
+          select
+            j.id,
+            j.title,
+            j.lifecycle,
+            j.updated_at,
+            j.customer_id,
+            c.name as customer_name
+          from app.jobs j
+          join app.customers c
+            on c.workspace_id = j.workspace_id
+            and c.id = j.customer_id
+          where j.workspace_id = ${owner.workspace_id}::uuid
+          ${customerFilter}
+          ${lifecycleFilter}
           ${searchFilter}
           ${cursorFilter}
-          order by updated_at desc, id desc
+          order by j.updated_at desc, j.id desc
           limit ${query.limit + 1}
         `;
 
         const hasMore = rows.length > query.limit;
         const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
-        const items: JobSummary[] = pageRows.map((row) => ({
-          id: row.id,
-          title: row.title,
-          lifecycle: row.lifecycle as JobLifecycle,
-          updated_at: row.updated_at,
-          customer_id: row.customer_id,
-        }));
+        const items = pageRows.map(mapJobSummaryRow);
         const last = items[items.length - 1];
         const next_cursor =
           hasMore && last
@@ -1227,6 +1307,7 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                 id: last.id,
                 customer_id: query.customer_id,
                 state: query.state,
+                bucket: query.bucket,
                 search: query.search,
               })
             : null;
