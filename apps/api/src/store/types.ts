@@ -17,6 +17,11 @@ export type UpdateCustomerResult =
   | { status: "not_found" }
   | { status: "version_conflict"; customer: Customer };
 
+export type ArchiveCustomerResult =
+  | { status: "updated"; customer: Customer }
+  | { status: "unchanged"; customer: Customer }
+  | { status: "not_found" };
+
 export type AppUserRecord = {
   id: string;
   auth_user_id: string;
@@ -143,6 +148,12 @@ export type OwnerTx = {
     fields: UpdateCustomerInput;
     now: string;
   }): Promise<UpdateCustomerResult>;
+  archiveCustomer(input: {
+    workspaceId: string;
+    customerId: string;
+    archived: boolean;
+    now: string;
+  }): Promise<ArchiveCustomerResult>;
   listCustomers(input: {
     workspaceId: string;
     query: CustomerListQuery;

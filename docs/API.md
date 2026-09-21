@@ -311,6 +311,8 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 **Tests.** Archive hides from default list; restore; jobs remain; cross-tenant 404; name/email unchanged.
 
+**Evidence (CUST-API-05, 2026-09-21):** Memory `customers.archive.test.ts` + live `customers.archive.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Restore is the same route with `{ archived: false }` (no separate `/restore`). If-Match not required (DEC-CUST-005). Desired state already current → 200, no version bump / no `archived_at` rewrite. State change → version N→N+1. Idempotent replay returns stored response without a second write. Customer-with-jobs archive/restore preserves jobs. Unknown/cross-tenant identical generic 404.
+
 ---
 
 ## DELETE /v1/customers/{id}

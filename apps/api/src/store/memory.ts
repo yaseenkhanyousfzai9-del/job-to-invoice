@@ -4,6 +4,7 @@ import {
   decodeJobListCursor,
   encodeCustomerListCursor,
   encodeJobListCursor,
+  nextArchivedAt,
 } from "@job-to-invoice/domain";
 import type { Customer, JobLifecycle, JobSummary } from "@job-to-invoice/domain";
 import type {
@@ -250,6 +251,21 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       if (input.fields.billing_address !== undefined) {
         row.billing_address = input.fields.billing_address;
       }
+      row.version = row.version + 1;
+      row.updated_at = input.now;
+      return { status: "updated", customer: toCustomer(row) };
+    },
+    async archiveCustomer(input) {
+      const rows = state.customersByWorkspace.get(input.workspaceId) ?? [];
+      const row = rows.find((item) => item.id === input.customerId);
+      if (!row) {
+        return { status: "not_found" };
+      }
+      const currentlyArchived = row.archived_at !== null;
+      if (input.archived === currentlyArchived) {
+        return { status: "unchanged", customer: toCustomer(row) };
+      }
+      row.archived_at = nextArchivedAt(row.archived_at, input.archived, input.now);
       row.version = row.version + 1;
       row.updated_at = input.now;
       return { status: "updated", customer: toCustomer(row) };

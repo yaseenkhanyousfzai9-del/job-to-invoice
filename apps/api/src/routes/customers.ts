@@ -4,6 +4,7 @@ import {
   isUuid,
   notFound,
   parseCreateCustomerInput,
+  parseCustomerArchiveCommand,
   parseCustomerListQuery,
   parseIfMatchVersion,
   parseUpdateCustomerInput,
@@ -25,6 +26,10 @@ const CREATE_ROUTE = "POST /v1/customers";
 
 function patchRoute(customerId: string): string {
   return `PATCH /v1/customers/${customerId}`;
+}
+
+function archiveRoute(customerId: string): string {
+  return `POST /v1/customers/${customerId}/archive`;
 }
 
 function customerErrorEnvelope(
@@ -217,6 +222,72 @@ export async function registerCustomersRoute(
       }
       if (result.status === "version_conflict") {
         throw versionConflict(result.customer);
+      }
+
+      const body = successEnvelope(request.id, result.customer);
+      await tx.putIdempotency({
+        actor_scope: owner.userId,
+        key: idempotencyKey,
+        route,
+        request_hash: requestHash,
+        status_code: 200,
+        response_json: body,
+      });
+      void reply.status(200);
+      return body;
+    });
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/customers/:id/archive", async (request, reply) => {
+    const owner = requireOwner(request);
+    requireActiveOwner(owner);
+
+    const customerId = request.params.id;
+    if (!isUuid(customerId)) {
+      throw validationFailed({ id: ["Customer id must be a UUID."] });
+    }
+
+    const idempotencyKeyHeader = request.headers["idempotency-key"];
+    const idempotencyKey =
+      typeof idempotencyKeyHeader === "string" ? idempotencyKeyHeader : undefined;
+    if (!idempotencyKey || !isUuid(idempotencyKey)) {
+      throw validationFailed({
+        "Idempotency-Key": ["A UUID Idempotency-Key is required."],
+      });
+    }
+
+    const command = parseCustomerArchiveCommand(request.body);
+    const route = archiveRoute(customerId);
+    const requestHash = hashCanonicalJson(command);
+
+    return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
+      const existingKey = await tx.getIdempotency(owner.userId, idempotencyKey);
+      if (existingKey) {
+        if (existingKey.request_hash !== requestHash || existingKey.route !== route) {
+          throw conflict(
+            "IDEMPOTENCY_MISMATCH",
+            "This Idempotency-Key was used with a different request.",
+          );
+        }
+        void reply.status(existingKey.status_code);
+        return existingKey.response_json;
+      }
+
+      const bundle = await tx.findWorkspaceByOwner(owner.userId);
+      if (!bundle) {
+        throw conflict("WORKSPACE_REQUIRED", "Create a workspace before archiving customers.");
+      }
+
+      const now = new Date().toISOString();
+      const result = await tx.archiveCustomer({
+        workspaceId: bundle.workspace.id,
+        customerId,
+        archived: command.archived,
+        now,
+      });
+
+      if (result.status === "not_found") {
+        throw notFound();
       }
 
       const body = successEnvelope(request.id, result.customer);

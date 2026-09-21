@@ -5,6 +5,7 @@ import {
   encodeCustomerListCursor,
   encodeJobListCursor,
   escapeLikePattern,
+  nextArchivedAt,
 } from "@job-to-invoice/domain";
 import type {
   AccountStatus,
@@ -430,6 +431,96 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                   updated_at: existingRow.updated_at,
                 },
               };
+            }
+            return {
+              status: "updated",
+              customer: {
+                id: row.id,
+                name: row.name,
+                email: row.email,
+                phone: row.phone,
+                billing_address: row.billing_address,
+                archived_at: row.archived_at,
+                version: row.version,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+              },
+            };
+          },
+          async archiveCustomer(input) {
+            const locked = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              select id, name, email, phone,
+                     billing_address_json as billing_address,
+                     archived_at, version, created_at, updated_at
+              from app.customers
+              where workspace_id = ${input.workspaceId}::uuid
+                and id = ${input.customerId}::uuid
+              for update
+            `;
+            const current = locked[0];
+            if (!current) {
+              return { status: "not_found" };
+            }
+            const currentlyArchived = current.archived_at !== null;
+            if (input.archived === currentlyArchived) {
+              return {
+                status: "unchanged",
+                customer: {
+                  id: current.id,
+                  name: current.name,
+                  email: current.email,
+                  phone: current.phone,
+                  billing_address: current.billing_address,
+                  archived_at: current.archived_at,
+                  version: current.version,
+                  created_at: current.created_at,
+                  updated_at: current.updated_at,
+                },
+              };
+            }
+
+            const nextArchived = nextArchivedAt(
+              current.archived_at,
+              input.archived,
+              input.now,
+            );
+            const rows = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              update app.customers set
+                archived_at = ${nextArchived}::timestamptz,
+                version = version + 1,
+                updated_at = ${input.now}::timestamptz
+              where workspace_id = ${input.workspaceId}::uuid
+                and id = ${input.customerId}::uuid
+              returning id, name, email, phone, billing_address_json as billing_address,
+                        archived_at, version, created_at, updated_at
+            `;
+            const row = rows[0];
+            if (!row) {
+              return { status: "not_found" };
             }
             return {
               status: "updated",
