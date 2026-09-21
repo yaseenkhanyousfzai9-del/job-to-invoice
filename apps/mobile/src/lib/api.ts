@@ -47,7 +47,7 @@ export class DomainApiError extends Error {
 }
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   accessToken: string;
   body?: unknown;
   idempotencyKey?: string;
@@ -224,6 +224,26 @@ export async function archiveCustomer(
     method: "POST",
     accessToken,
     body: { archived },
+    idempotencyKey,
+  });
+}
+
+export function buildDeleteCustomerPath(customerId: string): string {
+  return `/v1/customers/${customerId}`;
+}
+
+export type DeleteCustomerResult = {
+  deleted: true;
+};
+
+export async function deleteCustomer(
+  accessToken: string,
+  customerId: string,
+  idempotencyKey: string,
+): Promise<DeleteCustomerResult> {
+  return apiRequest<DeleteCustomerResult>(buildDeleteCustomerPath(customerId), {
+    method: "DELETE",
+    accessToken,
     idempotencyKey,
   });
 }

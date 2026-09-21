@@ -26,12 +26,22 @@ import {
   archivePendingLabel,
 } from "../../../../src/features/customers/customerArchive";
 import {
+  DELETE_ACTION_LABEL,
+  DELETE_CANCEL_ACTION,
+  DELETE_CONFIRM_ACTION,
+  DELETE_CONFIRM_BODY,
+  DELETE_CONFIRM_TITLE,
+  DELETE_REFERENCED_ARCHIVE_ACTION,
+  DELETING_LABEL,
+} from "../../../../src/features/customers/customerDelete";
+import {
   createCustomerDetailController,
   emptyJobsCopy,
   presentCustomerDetail,
   presentJobRow,
   showCustomerDetailLoading,
   customerNotFoundCopy,
+  customerNoLongerExistsCopy,
   type CustomerDetailSnapshot,
 } from "../../../../src/features/customers/customerDetail";
 import {
@@ -53,6 +63,9 @@ export default function CustomerDetailScreen() {
     () =>
       createCustomerDetailController(customerId || "missing", {
         async onArchiveSuccess(_customer, accessToken) {
+          await obtainCustomersListController().refreshAfterMutation(accessToken);
+        },
+        async onDeleteSuccess(accessToken) {
           await obtainCustomersListController().refreshAfterMutation(accessToken);
         },
       }),
@@ -123,6 +136,32 @@ export default function CustomerDetailScreen() {
     }
   }
 
+  async function onConfirmDelete() {
+    const result = await controller.confirmDelete(auth.accessToken);
+    if (result === "unauthenticated") {
+      await auth.signOut({ source: "401", reason: "customer_delete_unauthenticated" });
+      return;
+    }
+    if (result === "deleted") {
+      router.replace(CUSTOMERS_LIST_HREF);
+    }
+  }
+
+  async function onRetryDelete() {
+    const result = await controller.retryDelete(auth.accessToken);
+    if (result === "unauthenticated") {
+      await auth.signOut({ source: "401", reason: "customer_delete_retry_unauthenticated" });
+      return;
+    }
+    if (result === "deleted") {
+      router.replace(CUSTOMERS_LIST_HREF);
+    }
+  }
+
+  const notFoundCopy = snapshot.deleteNotFound
+    ? customerNoLongerExistsCopy()
+    : customerNotFoundCopy();
+
   return (
     <Screen testID="customer-detail-screen">
       <Stack.Screen options={{ title: "Customer", headerBackTitle: "Customers" }} />
@@ -142,7 +181,7 @@ export default function CustomerDetailScreen() {
         </View>
       ) : snapshot.phase === "not_found" ? (
         <View style={styles.centered} accessibilityLiveRegion="polite">
-          <Body>{customerNotFoundCopy()}</Body>
+          <Body>{notFoundCopy}</Body>
           <PrimaryButton
             label="Back to Customers"
             onPress={() => router.replace(CUSTOMERS_LIST_HREF)}
@@ -169,6 +208,10 @@ export default function CustomerDetailScreen() {
           onConfirmArchive={() => void onConfirmArchive()}
           onRestore={() => void onRestore()}
           onRetryArchiveAction={() => void onRetryArchiveAction()}
+          onOpenDeleteConfirm={() => controller.openDeleteConfirm()}
+          onCancelDeleteConfirm={() => controller.cancelDeleteConfirm()}
+          onConfirmDelete={() => void onConfirmDelete()}
+          onRetryDelete={() => void onRetryDelete()}
         />
       ) : null}
     </Screen>
@@ -186,16 +229,24 @@ function CustomerDetailBody(props: {
   onConfirmArchive: () => void;
   onRestore: () => void;
   onRetryArchiveAction: () => void;
+  onOpenDeleteConfirm: () => void;
+  onCancelDeleteConfirm: () => void;
+  onConfirmDelete: () => void;
+  onRetryDelete: () => void;
 }) {
   const { snapshot } = props;
   const customer = snapshot.customer!;
   const presented = presentCustomerDetail(customer);
   const actionKind = archiveActionForCustomer(customer);
-  const pending = snapshot.archivePending;
-  const pendingLabel =
+  const archivePending = snapshot.archivePending;
+  const deletePending = snapshot.deletePending;
+  const pending = archivePending || deletePending;
+  const archivePendingLabelText =
     snapshot.archivePendingKind !== null
       ? archivePendingLabel(snapshot.archivePendingKind)
       : null;
+  const showArchiveFromConflict =
+    snapshot.deleteReferencedConflict && actionKind === "archive" && !snapshot.archiveConfirmOpen;
 
   return (
     <ScrollView
@@ -224,42 +275,44 @@ function CustomerDetailBody(props: {
 
       {actionKind === "archive" && !snapshot.archiveConfirmOpen ? (
         <PrimaryButton
-          label={pending && snapshot.archivePendingKind === "archive" ? pendingLabel! : archiveActionLabel("archive")}
+          label={
+            archivePending && snapshot.archivePendingKind === "archive"
+              ? archivePendingLabelText!
+              : archiveActionLabel("archive")
+          }
           onPress={props.onOpenArchiveConfirm}
-          loading={pending && snapshot.archivePendingKind === "archive"}
+          loading={archivePending && snapshot.archivePendingKind === "archive"}
           disabled={pending}
         />
       ) : null}
 
       {actionKind === "restore" && !snapshot.archiveConfirmOpen ? (
         <PrimaryButton
-          label={pending && snapshot.archivePendingKind === "restore" ? pendingLabel! : archiveActionLabel("restore")}
+          label={
+            archivePending && snapshot.archivePendingKind === "restore"
+              ? archivePendingLabelText!
+              : archiveActionLabel("restore")
+          }
           onPress={props.onRestore}
-          loading={pending && snapshot.archivePendingKind === "restore"}
+          loading={archivePending && snapshot.archivePendingKind === "restore"}
           disabled={pending}
         />
       ) : null}
 
       {snapshot.archiveConfirmOpen ? (
-        <View
-          accessibilityLiveRegion="polite"
-          style={styles.confirmCard}
-        >
-          <Text
-            accessibilityRole="header"
-            style={styles.confirmTitle}
-          >
+        <View accessibilityLiveRegion="polite" style={styles.confirmCard}>
+          <Text accessibilityRole="header" style={styles.confirmTitle}>
             {ARCHIVE_CONFIRM_TITLE}
           </Text>
           <Text style={styles.confirmBody}>{ARCHIVE_CONFIRM_BODY}</Text>
           <PrimaryButton
             label={
-              pending && snapshot.archivePendingKind === "archive"
-                ? pendingLabel!
+              archivePending && snapshot.archivePendingKind === "archive"
+                ? archivePendingLabelText!
                 : ARCHIVE_CONFIRM_ACTION
             }
             onPress={props.onConfirmArchive}
-            loading={pending && snapshot.archivePendingKind === "archive"}
+            loading={archivePending && snapshot.archivePendingKind === "archive"}
             disabled={pending}
           />
           <TextLink
@@ -275,6 +328,55 @@ function CustomerDetailBody(props: {
           snapshot.archiveErrorRetryable ? props.onRetryArchiveAction : undefined
         }
       />
+
+      {!snapshot.deleteConfirmOpen ? (
+        <PrimaryButton
+          label={deletePending ? DELETING_LABEL : DELETE_ACTION_LABEL}
+          onPress={props.onOpenDeleteConfirm}
+          loading={deletePending}
+          disabled={pending}
+        />
+      ) : null}
+
+      {snapshot.deleteConfirmOpen ? (
+        <View accessibilityLiveRegion="polite" style={styles.deleteConfirmCard}>
+          <Text accessibilityRole="header" style={styles.confirmTitle}>
+            {DELETE_CONFIRM_TITLE}
+          </Text>
+          <Text style={styles.confirmBody}>{DELETE_CONFIRM_BODY}</Text>
+          <PrimaryButton
+            label={deletePending ? DELETING_LABEL : DELETE_CONFIRM_ACTION}
+            onPress={props.onConfirmDelete}
+            loading={deletePending}
+            disabled={pending}
+          />
+          <TextLink
+            label={DELETE_CANCEL_ACTION}
+            onPress={props.onCancelDeleteConfirm}
+          />
+        </View>
+      ) : null}
+
+      {snapshot.deleteReferencedConflict ? (
+        <View accessibilityLiveRegion="polite" style={styles.conflictCard}>
+          <Text style={styles.confirmBody}>{snapshot.deleteErrorMessage}</Text>
+          {snapshot.deleteReferencedGuidance ? (
+            <Text style={styles.confirmBody}>{snapshot.deleteReferencedGuidance}</Text>
+          ) : null}
+          {showArchiveFromConflict ? (
+            <PrimaryButton
+              label={DELETE_REFERENCED_ARCHIVE_ACTION}
+              onPress={props.onOpenArchiveConfirm}
+              disabled={pending}
+            />
+          ) : null}
+        </View>
+      ) : (
+        <ErrorBanner
+          message={snapshot.deleteErrorMessage}
+          onRetry={snapshot.deleteErrorRetryable ? props.onRetryDelete : undefined}
+        />
+      )}
 
       {presented.email ? (
         <View style={styles.fieldBlock}>
@@ -370,6 +472,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   confirmCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: layout.cornerRadius,
+    padding: 12,
+    gap: 8,
+    backgroundColor: "#ffffff",
+  },
+  deleteConfirmCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: layout.cornerRadius,
+    padding: 12,
+    gap: 8,
+    backgroundColor: "#fff8f7",
+  },
+  conflictCard: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.cornerRadius,

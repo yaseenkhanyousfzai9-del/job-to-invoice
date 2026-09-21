@@ -15,6 +15,11 @@ import {
   submitArchiveCustomer,
   type ArchiveActionKind,
 } from "./customerArchive";
+import {
+  createDeleteIdempotencySession,
+  DELETE_NOT_FOUND_MESSAGE,
+  submitDeleteCustomer,
+} from "./customerDelete";
 
 export type CustomerDetailPhase =
   | "loading"
@@ -40,6 +45,13 @@ export type CustomerDetailSnapshot = {
   archiveErrorMessage: string | null;
   archiveErrorRetryable: boolean;
   archiveRetryKind: ArchiveActionKind | null;
+  deleteConfirmOpen: boolean;
+  deletePending: boolean;
+  deleteErrorMessage: string | null;
+  deleteErrorRetryable: boolean;
+  deleteReferencedConflict: boolean;
+  deleteReferencedGuidance: string | null;
+  deleteNotFound: boolean;
 };
 
 export type CustomerDetailPresentation = {
@@ -77,6 +89,13 @@ export function initialCustomerDetailSnapshot(customerId: string): CustomerDetai
     archiveErrorMessage: null,
     archiveErrorRetryable: false,
     archiveRetryKind: null,
+    deleteConfirmOpen: false,
+    deletePending: false,
+    deleteErrorMessage: null,
+    deleteErrorRetryable: false,
+    deleteReferencedConflict: false,
+    deleteReferencedGuidance: null,
+    deleteNotFound: false,
   };
 }
 
@@ -131,6 +150,10 @@ export function emptyJobsCopy(): string {
 
 export function customerNotFoundCopy(): string {
   return "Customer not found.";
+}
+
+export function customerNoLongerExistsCopy(): string {
+  return DELETE_NOT_FOUND_MESSAGE;
 }
 
 export function showCustomerDetailLoading(snapshot: CustomerDetailSnapshot): boolean {
@@ -232,6 +255,15 @@ export type CustomerDetailController = {
   retryArchiveAction: (
     accessToken: string | null | undefined,
   ) => Promise<"ok" | "unauthenticated" | "blocked">;
+  openDeleteConfirm: () => void;
+  cancelDeleteConfirm: () => void;
+  confirmDelete: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated" | "blocked" | "deleted" | "not_found">;
+  retryDelete: (
+    accessToken: string | null | undefined,
+  ) => Promise<"ok" | "unauthenticated" | "blocked" | "deleted" | "not_found">;
+  acceptDeleteNotFound: () => void;
   dispose: () => void;
 };
 
@@ -241,20 +273,26 @@ export function createCustomerDetailController(
     getCustomer?: typeof getCustomer;
     listJobs?: typeof listJobs;
     archiveCustomer?: Parameters<typeof submitArchiveCustomer>[0]["archive"];
+    deleteCustomer?: Parameters<typeof submitDeleteCustomer>[0]["deleteCustomer"];
     onArchiveSuccess?: (customer: Customer, accessToken: string) => Promise<void> | void;
+    onDeleteSuccess?: (accessToken: string) => Promise<void> | void;
     newIdempotencyKey?: () => string;
   },
 ): CustomerDetailController {
   const fetchCustomer = options?.getCustomer ?? getCustomer;
   const fetchJobs = options?.listJobs ?? listJobs;
   const archivePost = options?.archiveCustomer;
+  const deletePost = options?.deleteCustomer;
   const onArchiveSuccess = options?.onArchiveSuccess;
+  const onDeleteSuccess = options?.onDeleteSuccess;
   const idempotency = createArchiveIdempotencySession(options?.newIdempotencyKey);
+  const deleteIdempotency = createDeleteIdempotencySession(options?.newIdempotencyKey);
 
   let snapshot = initialCustomerDetailSnapshot(customerId);
   const listeners = new Set<() => void>();
   let loadMoreInFlight = false;
   let archiveInFlight = false;
+  let deleteInFlight = false;
   let disposed = false;
 
   function emit() {
@@ -266,11 +304,15 @@ export function createCustomerDetailController(
     emit();
   }
 
+  function mutationBusy(): boolean {
+    return archiveInFlight || snapshot.archivePending || deleteInFlight || snapshot.deletePending;
+  }
+
   async function runArchiveAction(
     accessToken: string | null | undefined,
     kind: ArchiveActionKind,
   ): Promise<"ok" | "unauthenticated" | "blocked"> {
-    if (archiveInFlight || snapshot.archivePending) {
+    if (mutationBusy()) {
       return "blocked";
     }
     if (!snapshot.customer) {
@@ -291,6 +333,11 @@ export function createCustomerDetailController(
       archiveErrorMessage: null,
       archiveErrorRetryable: false,
       archiveRetryKind: null,
+      deleteConfirmOpen: false,
+      deleteErrorMessage: null,
+      deleteErrorRetryable: false,
+      deleteReferencedConflict: false,
+      deleteReferencedGuidance: null,
     });
 
     try {
@@ -345,6 +392,119 @@ export function createCustomerDetailController(
       return "ok";
     } finally {
       archiveInFlight = false;
+    }
+  }
+
+  async function runDeleteAction(
+    accessToken: string | null | undefined,
+  ): Promise<"ok" | "unauthenticated" | "blocked" | "deleted" | "not_found"> {
+    if (mutationBusy()) {
+      return "blocked";
+    }
+    if (!snapshot.customer && !snapshot.deleteErrorRetryable) {
+      return "blocked";
+    }
+
+    deleteInFlight = true;
+    const idempotencyKey = deleteIdempotency.keyForAttempt();
+    setSnapshot({
+      deleteConfirmOpen: false,
+      deletePending: true,
+      deleteErrorMessage: null,
+      deleteErrorRetryable: false,
+      deleteReferencedConflict: false,
+      deleteReferencedGuidance: null,
+      deleteNotFound: false,
+      archiveConfirmOpen: false,
+      archiveErrorMessage: null,
+      archiveErrorRetryable: false,
+      archiveRetryKind: null,
+    });
+
+    try {
+      const result = await submitDeleteCustomer({
+        accessToken,
+        customerId,
+        idempotencyKey,
+        ...(deletePost ? { deleteCustomer: deletePost } : {}),
+      });
+
+      if (result.kind === "unauthenticated") {
+        setSnapshot({
+          deletePending: false,
+          deleteErrorMessage: result.message,
+          deleteErrorRetryable: false,
+        });
+        return "unauthenticated";
+      }
+
+      if (result.kind === "success") {
+        setSnapshot({
+          deletePending: false,
+          deleteErrorMessage: null,
+          deleteErrorRetryable: false,
+          deleteReferencedConflict: false,
+          deleteReferencedGuidance: null,
+          deleteConfirmOpen: false,
+          customer: null,
+          jobs: [],
+          jobsNextCursor: null,
+          phase: "not_found",
+          deleteNotFound: true,
+          errorMessage: customerNoLongerExistsCopy(),
+        });
+        if (accessToken && onDeleteSuccess) {
+          try {
+            await onDeleteSuccess(accessToken);
+          } catch {
+            // List refresh is best-effort.
+          }
+        }
+        deleteIdempotency.reset();
+        return "deleted";
+      }
+
+      if (result.kind === "referenced") {
+        setSnapshot({
+          deletePending: false,
+          deleteErrorMessage: result.message,
+          deleteErrorRetryable: false,
+          deleteReferencedConflict: true,
+          deleteReferencedGuidance: result.guidance,
+          deleteConfirmOpen: false,
+        });
+        return "ok";
+      }
+
+      if (result.kind === "not_found") {
+        setSnapshot({
+          deletePending: false,
+          deleteErrorMessage: null,
+          deleteErrorRetryable: false,
+          deleteReferencedConflict: false,
+          deleteReferencedGuidance: null,
+          deleteNotFound: true,
+          customer: null,
+          jobs: [],
+          jobsNextCursor: null,
+          phase: "not_found",
+          errorMessage: result.message,
+        });
+        deleteIdempotency.reset();
+        return "not_found";
+      }
+
+      const retryable = result.kind === "network" || (result.kind === "error" && result.retryable);
+      setSnapshot({
+        deletePending: false,
+        deleteErrorMessage: result.message,
+        deleteErrorRetryable: retryable,
+        deleteReferencedConflict: false,
+        deleteReferencedGuidance: null,
+      });
+      return "ok";
+    } finally {
+      deleteInFlight = false;
     }
   }
 
@@ -570,7 +730,12 @@ export function createCustomerDetailController(
       }
     },
     openArchiveConfirm() {
-      if (!snapshot.customer || isCustomerArchived(snapshot.customer) || snapshot.archivePending) {
+      if (
+        !snapshot.customer ||
+        isCustomerArchived(snapshot.customer) ||
+        mutationBusy() ||
+        snapshot.deleteConfirmOpen
+      ) {
         return;
       }
       setSnapshot({
@@ -578,10 +743,15 @@ export function createCustomerDetailController(
         archiveErrorMessage: null,
         archiveErrorRetryable: false,
         archiveRetryKind: null,
+        deleteConfirmOpen: false,
+        deleteErrorMessage: null,
+        deleteErrorRetryable: false,
+        deleteReferencedConflict: false,
+        deleteReferencedGuidance: null,
       });
     },
     cancelArchiveConfirm() {
-      if (snapshot.archivePending) return;
+      if (snapshot.archivePending || snapshot.deletePending) return;
       setSnapshot({ archiveConfirmOpen: false });
     },
     confirmArchive(accessToken) {
@@ -594,6 +764,46 @@ export function createCustomerDetailController(
       const kind = snapshot.archiveRetryKind;
       if (!kind) return Promise.resolve("blocked" as const);
       return runArchiveAction(accessToken, kind);
+    },
+    openDeleteConfirm() {
+      if (!snapshot.customer || mutationBusy() || snapshot.archiveConfirmOpen) {
+        return;
+      }
+      deleteIdempotency.reset();
+      setSnapshot({
+        deleteConfirmOpen: true,
+        deleteErrorMessage: null,
+        deleteErrorRetryable: false,
+        deleteReferencedConflict: false,
+        deleteReferencedGuidance: null,
+        deleteNotFound: false,
+        archiveConfirmOpen: false,
+        archiveErrorMessage: null,
+        archiveErrorRetryable: false,
+        archiveRetryKind: null,
+      });
+    },
+    cancelDeleteConfirm() {
+      if (snapshot.deletePending || snapshot.archivePending) return;
+      deleteIdempotency.reset();
+      setSnapshot({ deleteConfirmOpen: false });
+    },
+    confirmDelete(accessToken) {
+      return runDeleteAction(accessToken);
+    },
+    retryDelete(accessToken) {
+      if (!snapshot.deleteErrorRetryable) {
+        return Promise.resolve("blocked" as const);
+      }
+      return runDeleteAction(accessToken);
+    },
+    acceptDeleteNotFound() {
+      setSnapshot({
+        deleteNotFound: true,
+        phase: "not_found",
+        customer: null,
+        errorMessage: customerNoLongerExistsCopy(),
+      });
     },
     dispose() {
       disposed = true;
