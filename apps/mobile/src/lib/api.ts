@@ -272,3 +272,44 @@ export async function listJobs(
 ): Promise<JobListPage> {
   return apiRequest<JobListPage>(buildListJobsPath(params), { accessToken });
 }
+
+export type CreateJobBody = {
+  id: string;
+  customer_id: string;
+  title: string;
+  site_address: {
+    line1: string;
+    line2: string | null;
+    city: string;
+    state: string;
+    zip: string;
+  } | null;
+  no_site: boolean;
+  mode: "quote" | "direct_invoice";
+};
+
+export type CreatedJobDto = {
+  id: string;
+  title: string;
+  lifecycle: string;
+  updated_at: string;
+  customer_id: string;
+  version: number;
+  scope_version: number;
+  no_site: boolean;
+  site_address: CreateJobBody["site_address"];
+  mode: "quote" | "direct_invoice";
+};
+
+export async function createJob(
+  accessToken: string,
+  body: CreateJobBody,
+  idempotencyKey: string,
+): Promise<CreatedJobDto> {
+  return apiRequest<CreatedJobDto>("/v1/jobs", {
+    method: "POST",
+    accessToken,
+    body,
+    idempotencyKey,
+  });
+}

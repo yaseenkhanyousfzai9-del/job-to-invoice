@@ -4,6 +4,7 @@ import {
   CUSTOMERS_LIST_HREF,
   CUSTOMERS_NEW_HREF,
 } from "../../src/features/customers/customerRoutes";
+import { CREATE_JOB_HREF } from "../../src/features/jobs/jobRoutes";
 import { useAuth } from "../../src/providers/AuthProvider";
 
 export default function OwnerShellScreen() {
@@ -17,10 +18,11 @@ export default function OwnerShellScreen() {
       <Title>Job to Invoice</Title>
       <Body>{`Signed in as ${auth.me?.user.display_email ?? "owner"}.`}</Body>
       <Secondary>
-        Jobs, quotes, and invoices are not implemented yet. Open Customers to search and add
-        contacts.
+        Jobs list, quotes, and invoices are not implemented yet. Create a job to bind an active
+        customer, or open Customers to manage contacts.
       </Secondary>
       {created ? <Body>Customer created.</Body> : null}
+      <PrimaryButton label="Create job" onPress={() => router.push(CREATE_JOB_HREF)} />
       <PrimaryButton label="Customers" onPress={() => router.push(CUSTOMERS_LIST_HREF)} />
       <PrimaryButton label="Add customer" onPress={() => router.push(CUSTOMERS_NEW_HREF)} />
       <PrimaryButton label="Sign out" onPress={() => void auth.signOut()} />

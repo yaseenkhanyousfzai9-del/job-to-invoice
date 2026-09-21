@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { US_STATES } from "@job-to-invoice/domain";
 import {
   Body,
@@ -19,12 +19,15 @@ import {
   type CustomerFormDraft,
 } from "../../../src/features/customers/createCustomerForm";
 import { customersListHrefWithCreatedFlag } from "../../../src/features/customers/customerRoutes";
+import { createJobHrefWithSelectedCustomer } from "../../../src/features/jobs/jobRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
 export default function NewCustomerScreen() {
   const router = useRouter();
   const auth = useAuth();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const returnToCreateJob = params.returnTo === "create-job";
   const idempotency = useMemo(() => createCustomerIdempotencySession(), []);
   const submittingRef = useRef(false);
 
@@ -97,7 +100,13 @@ export default function NewCustomerScreen() {
       setDuplicateMessage(null);
       setDuplicateNames([]);
       setDraft(emptyCustomerFormDraft());
-      router.replace(customersListHrefWithCreatedFlag());
+      if (returnToCreateJob) {
+        router.replace(
+          createJobHrefWithSelectedCustomer(result.customer.id, result.customer.name),
+        );
+      } else {
+        router.replace(customersListHrefWithCreatedFlag());
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);

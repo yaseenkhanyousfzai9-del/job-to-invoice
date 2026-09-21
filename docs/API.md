@@ -397,7 +397,7 @@ Do not implement quote editor here. Creating the draft document row may wait for
 
 **Tests.** Bind active customer; archived customer rejected; foreign customer_id 404; job appears on `GET /jobs?customer_id=`.
 
-**Evidence (CUST-JOB-01 API, 2026-09-21):** Memory `jobs.create.test.ts` + live `jobs.create.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Active create → 201 draft/version=1/scope_version=0; list-by-customer includes row; idempotent replay; `IDEMPOTENCY_MISMATCH`; unknown/cross-tenant identical 404; archived → 422 `CUSTOMER_ARCHIVED`. S06 mobile Create Job / Customer picker UI remains PENDING.
+**Evidence (CUST-JOB-01 API, 2026-09-21):** Memory `jobs.create.test.ts` + live `jobs.create.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Active create → 201 draft/version=1/scope_version=0; list-by-customer includes row; idempotent replay; `IDEMPOTENCY_MISMATCH`; unknown/cross-tenant identical 404; archived → 422 `CUSTOMER_ARCHIVED`. S06 mobile Create Job / Customer picker UI is IMPLEMENTED / AWAITING PHYSICAL VERIFICATION (2026-09-21).
 ---
 
 ## Tenant-isolation tests (all Customer routes)

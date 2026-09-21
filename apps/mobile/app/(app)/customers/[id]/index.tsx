@@ -55,9 +55,10 @@ import { colors, layout, typography } from "../../../../src/theme/tokens";
 export default function CustomerDetailScreen() {
   const auth = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; jobCreated?: string }>();
   const customerId =
     typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
+  const jobCreated = params.jobCreated === "1";
 
   const controller = useMemo(
     () =>
@@ -198,6 +199,7 @@ export default function CustomerDetailScreen() {
         <CustomerDetailBody
           snapshot={snapshot}
           customerId={customerId}
+          jobCreated={jobCreated}
           onEdit={() =>
             pushCustomerEdit((href) => router.push(href), customerId)
           }
@@ -221,6 +223,7 @@ export default function CustomerDetailScreen() {
 function CustomerDetailBody(props: {
   snapshot: CustomerDetailSnapshot;
   customerId: string;
+  jobCreated?: boolean;
   onEdit: () => void;
   onRetryJobs: () => void;
   onLoadMore: () => void;
@@ -256,6 +259,7 @@ function CustomerDetailBody(props: {
     >
       <View style={styles.headerBlock}>
         <Title>{presented.name}</Title>
+        {props.jobCreated ? <Body>Job created. It appears in Jobs below.</Body> : null}
         {presented.archivedLabel ? (
           <Text
             accessibilityRole="text"
