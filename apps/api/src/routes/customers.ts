@@ -2,6 +2,7 @@ import {
   conflict,
   duplicateCustomerEmailConflict,
   isUuid,
+  notFound,
   parseCreateCustomerInput,
   parseCustomerListQuery,
   validationFailed,
@@ -82,6 +83,39 @@ export async function registerCustomersRoute(
     });
 
     return successEnvelope(request.id, authorized.page);
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/customers/:id", async (request) => {
+    const token = requireVerifiedAccessToken(request);
+    const customerId = request.params.id;
+    if (!isUuid(customerId)) {
+      throw validationFailed({ id: ["Customer id must be a UUID."] });
+    }
+
+    let authorized = await deps.store.getCustomerAuthorized(token.subject, customerId);
+    if (authorized.status === "no_user") {
+      await deps.store.withOwnerTransaction(token.subject, async (tx) => {
+        await resolveOwnerInTransaction(tx, token, { touchSession: false });
+      });
+      authorized = await deps.store.getCustomerAuthorized(token.subject, customerId);
+      if (authorized.status === "no_user") {
+        throw notFound();
+      }
+    }
+
+    requireActiveOwner({
+      token,
+      userId: authorized.userId,
+      displayEmail: authorized.displayEmail,
+      status: authorized.accountStatus,
+      bundle: null,
+    });
+
+    if (!authorized.customer) {
+      throw notFound();
+    }
+
+    return successEnvelope(request.id, authorized.customer);
   });
 
   app.post("/v1/customers", async (request, reply) => {

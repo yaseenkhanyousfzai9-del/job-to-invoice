@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, CUST-UI-01, and CUST-UI-02 are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create/list remains CUST-JOB-01. S19 is partially VERIFIED (list/search/create entry only; detail/jobs API/UI/archive/delete not VERIFIED). CUST-API-03 prerequisites (CUST-API-02 + jobs FK) are ready but not started. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, CUST-UI-01, and CUST-UI-02 are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED (list/search/create entry + detail/jobs **API**; Customer Detail UI CUST-UI-03 and archive/delete not VERIFIED). Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -559,7 +559,7 @@ Recorded 2026-09-18:
 - Indexes: list, lifecycle, associated-jobs `(workspace_id, customer_id, updated_at DESC, id DESC)`
 - FORCE RLS + `jobs_tenant`; `anon`/`authenticated` revoked
 - Live `apps/api/src/jobs.security.test.ts` passed (same-workspace FK, cross-workspace FK reject, RLS CRUD isolation, unreferenced delete allowed, referenced delete blocked)
-- No Jobs HTTP API / UI in this slice; CUST-API-03 / CUST-JOB-01 not started
+- No Jobs HTTP create/UI in this slice; CUST-API-03 list-by-customer is separate; CUST-JOB-01 not started for POST
 
 ### Prerequisites
 
@@ -970,7 +970,7 @@ Return one customer for S19 detail. Cross-tenant ids are generic 404. Associated
 
 ### Prerequisites
 
-CUST-API-02, jobs composite FK (`R-CUS-31` / `0004_jobs.sql`). `GET /v1/customers/{id}` plus `GET /v1/jobs?customer_id=` (DEC-CUST-001, DEC-CUST-006). **Prerequisites ready; slice not started.**
+CUST-API-02, jobs composite FK (`R-CUS-31` / `0004_jobs.sql`). `GET /v1/customers/{id}` plus `GET /v1/jobs?customer_id=` (DEC-CUST-001, DEC-CUST-006). **VERIFIED 2026-09-21** (memory + live US `vlpjaamdjtmtqtpwbhzq`). Customer Detail UI is CUST-UI-03 next.
 
 ### Files likely involved
 
@@ -1017,11 +1017,13 @@ Associated jobs for A never include B's jobs even if UUID guessed.
 
 ### Exit criteria
 
-Detail payload exists. Isolation proven.
+Detail payload exists. Isolation proven. **Met.**
 
 ### Evidence required before VERIFIED
 
 Automated QA03 against API, storage, and sanitized logs. Redacting middleware test (OPS03 / QA63 analogue for customer email).
+
+**Evidence (2026-09-21):** `customers.detail.test.ts`, `jobs.list.test.ts`, live `customers.detail.live.test.ts` + `jobs.list.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Public Customer DTO; JobSummary `{id,title,lifecycle,updated_at,customer_id}`; unknown/cross-tenant identical 404; archived customer readable; jobs ordered `(updated_at,id) DESC` with opaque cursor. **CUST-API-03 = VERIFIED.** CUST-UI-03 not started.
 
 ---
 
@@ -1882,10 +1884,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). S19 is only partially VERIFIED (list/search/create entry); detail/jobs API/UI/archive/delete remain open. **CUST-API-03 prerequisites are ready** but not authorized in this slice.
-3. Jobs HTTP create/list (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). S19 remains partially VERIFIED: Detail UI (CUST-UI-03), archive/delete remain open. API prerequisites for Customer Detail UI are ready.
+3. Jobs HTTP create (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind; list-by-customer read is CUST-API-03 VERIFIED.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start Customer Detail / CUST-API-03 until authorized.
+Do not start Customer Detail UI / CUST-UI-03 until authorized. CUST-API-03 API prerequisites are ready.

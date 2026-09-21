@@ -4,6 +4,8 @@ import type {
   Customer,
   CustomerListQuery,
   DuplicateCustomerMatch,
+  JobListQuery,
+  JobSummary,
   UsAddress,
   WorkspaceCreateInput,
   WorkspaceTrade,
@@ -92,6 +94,12 @@ export type CustomerRow = Customer & {
   created_by: string;
 };
 
+export type JobRow = JobSummary & {
+  workspace_id: string;
+  created_at: string;
+  created_by: string;
+};
+
 export type OwnerTx = {
   findUserByAuthId(authUserId: string): Promise<AppUserRecord | null>;
   insertUser(input: {
@@ -105,15 +113,16 @@ export type OwnerTx = {
   }): Promise<AppUserRecord>;
   touchAuthentication(userId: string, displayEmail: string, normalizedEmail: string, now: string): Promise<AppUserRecord>;
   findWorkspaceByOwner(userId: string): Promise<WorkspaceBundle | null>;
+  findCustomersByNormalizedEmail(
+    workspaceId: string,
+    normalizedEmail: string,
+  ): Promise<DuplicateCustomerMatch[]>;
   createWorkspace(input: {
     userId: string;
     fields: WorkspaceCreateInput;
     now: string;
   }): Promise<WorkspaceBundle>;
-  findCustomersByNormalizedEmail(
-    workspaceId: string,
-    normalizedEmail: string,
-  ): Promise<DuplicateCustomerMatch[]>;
+  getCustomer(workspaceId: string, customerId: string): Promise<Customer | null>;
   createCustomer(input: {
     workspaceId: string;
     createdBy: string;
@@ -124,6 +133,18 @@ export type OwnerTx = {
     workspaceId: string;
     query: CustomerListQuery;
   }): Promise<{ items: Customer[]; next_cursor: string | null }>;
+  createJob(input: {
+    id: string;
+    workspaceId: string;
+    customerId: string;
+    createdBy: string;
+    title: string;
+    now: string;
+  }): Promise<JobSummary>;
+  listJobs(input: {
+    workspaceId: string;
+    query: JobListQuery;
+  }): Promise<{ items: JobSummary[]; next_cursor: string | null }>;
   getIdempotency(actorScope: string, key: string): Promise<IdempotencyRecord | null>;
   putIdempotency(record: IdempotencyRecord): Promise<void>;
 };
@@ -136,6 +157,27 @@ export type CustomerListAuthorizedResult =
       displayEmail: string;
       accountStatus: AccountStatus;
       page: { items: Customer[]; next_cursor: string | null };
+    };
+
+export type CustomerGetAuthorizedResult =
+  | { status: "no_user" }
+  | {
+      status: "ok";
+      userId: string;
+      displayEmail: string;
+      accountStatus: AccountStatus;
+      customer: Customer | null;
+    };
+
+export type JobsListAuthorizedResult =
+  | { status: "no_user" }
+  | { status: "customer_not_found" }
+  | {
+      status: "ok";
+      userId: string;
+      displayEmail: string;
+      accountStatus: AccountStatus;
+      page: { items: JobSummary[]; next_cursor: string | null };
     };
 
 export type AuthStore = {
@@ -151,5 +193,13 @@ export type AuthStore = {
     authUserId: string,
     query: CustomerListQuery,
   ): Promise<CustomerListAuthorizedResult>;
+  getCustomerAuthorized(
+    authUserId: string,
+    customerId: string,
+  ): Promise<CustomerGetAuthorizedResult>;
+  listJobsAuthorized(
+    authUserId: string,
+    query: JobListQuery,
+  ): Promise<JobsListAuthorizedResult>;
   close?(): Promise<void>;
 };

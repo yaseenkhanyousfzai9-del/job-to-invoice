@@ -15,6 +15,13 @@ function requestPath(url: string): string {
   return q === -1 ? url : url.slice(0, q);
 }
 
+function skipOwnerPreload(method: string, path: string): boolean {
+  if (method !== "GET") return false;
+  if (path === "/v1/customers" || path === "/v1/jobs") return true;
+  if (/^\/v1\/customers\/[^/]+$/.test(path)) return true;
+  return false;
+}
+
 export function registerOwnerAuth(
   app: FastifyInstance,
   deps: { jwtVerifier: JwtVerifier; store: AuthStore },
@@ -33,8 +40,8 @@ export function registerOwnerAuth(
     const token = await deps.jwtVerifier(request.headers.authorization);
     request.verifiedAccessToken = token;
 
-    // GET /v1/customers resolves owner + list in one DB transaction (remote RTT).
-    if (request.method === "GET" && requestPath(request.url) === "/v1/customers") {
+    // Optimized GET reads resolve owner + resource in one DB transaction.
+    if (skipOwnerPreload(request.method, requestPath(request.url))) {
       return;
     }
 

@@ -1,8 +1,17 @@
-import { conflict, decodeCustomerListCursor, encodeCustomerListCursor, escapeLikePattern } from "@job-to-invoice/domain";
+import {
+  conflict,
+  decodeCustomerListCursor,
+  decodeJobListCursor,
+  encodeCustomerListCursor,
+  encodeJobListCursor,
+  escapeLikePattern,
+} from "@job-to-invoice/domain";
 import type {
   AccountStatus,
   Customer,
   DuplicateCustomerMatch,
+  JobLifecycle,
+  JobSummary,
   UsAddress,
   WorkspaceTrade,
 } from "@job-to-invoice/domain";
@@ -203,6 +212,41 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               }),
             );
           },
+          async getCustomer(workspaceId, customerId) {
+            const rows = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              select id, name, email, phone, billing_address_json as billing_address,
+                     archived_at, version, created_at, updated_at
+              from app.customers
+              where workspace_id = ${workspaceId}::uuid
+                and id = ${customerId}::uuid
+              limit 1
+            `;
+            const row = rows[0];
+            if (!row) return null;
+            return {
+              id: row.id,
+              name: row.name,
+              email: row.email,
+              phone: row.phone,
+              billing_address: row.billing_address,
+              archived_at: row.archived_at,
+              version: row.version,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+            };
+          },
           async createCustomer(input) {
             const customerId = crypto.randomUUID();
             const rows = await tx<
@@ -328,6 +372,116 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
                 ? encodeCustomerListCursor({
                     updated_at: last.updated_at,
                     id: last.id,
+                    state: query.state,
+                    search: query.search,
+                  })
+                : null;
+            return { items, next_cursor };
+          },
+          async createJob(input) {
+            const rows = await tx<
+              {
+                id: string;
+                title: string;
+                lifecycle: string;
+                updated_at: string;
+                customer_id: string;
+              }[]
+            >`
+              insert into app.jobs (
+                id, workspace_id, customer_id, title, created_by, created_at, updated_at
+              ) values (
+                ${input.id}::uuid, ${input.workspaceId}::uuid, ${input.customerId}::uuid,
+                ${input.title}, ${input.createdBy}::uuid,
+                ${input.now}::timestamptz, ${input.now}::timestamptz
+              )
+              returning id, title, lifecycle, updated_at, customer_id
+            `;
+            const row = rows[0];
+            if (!row) {
+              throw new Error("job create failed");
+            }
+            return {
+              id: row.id,
+              title: row.title,
+              lifecycle: row.lifecycle as JobLifecycle,
+              updated_at: row.updated_at,
+              customer_id: row.customer_id,
+            };
+          },
+          async listJobs(input) {
+            const query = input.query;
+            const cursor = query.cursor
+              ? decodeJobListCursor(query.cursor, {
+                  customer_id: query.customer_id,
+                  state: query.state,
+                  search: query.search,
+                })
+              : null;
+            const searchPattern =
+              query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
+
+            const stateFilter =
+              query.state === "all"
+                ? tx``
+                : query.state === "active"
+                  ? tx`and lifecycle <> 'archived'`
+                  : query.state === "archived"
+                    ? tx`and lifecycle = 'archived'`
+                    : tx`and lifecycle = ${query.state}`;
+
+            const searchFilter =
+              searchPattern === null
+                ? tx``
+                : tx`and title ilike ${searchPattern} escape '\\'`;
+
+            const cursorFilter =
+              cursor === null
+                ? tx``
+                : tx`and (
+                    updated_at < ${cursor.updated_at}::timestamptz
+                    or (
+                      updated_at = ${cursor.updated_at}::timestamptz
+                      and id < ${cursor.id}::uuid
+                    )
+                  )`;
+
+            const rows = await tx<
+              {
+                id: string;
+                title: string;
+                lifecycle: string;
+                updated_at: string;
+                customer_id: string;
+              }[]
+            >`
+              select id, title, lifecycle, updated_at, customer_id
+              from app.jobs
+              where workspace_id = ${input.workspaceId}::uuid
+                and customer_id = ${query.customer_id}::uuid
+              ${stateFilter}
+              ${searchFilter}
+              ${cursorFilter}
+              order by updated_at desc, id desc
+              limit ${query.limit + 1}
+            `;
+
+            const hasMore = rows.length > query.limit;
+            const page = hasMore ? rows.slice(0, query.limit) : rows;
+            const items: JobSummary[] = page.map((row) => ({
+              id: row.id,
+              title: row.title,
+              lifecycle: row.lifecycle as JobLifecycle,
+              updated_at: row.updated_at,
+              customer_id: row.customer_id,
+            }));
+            const last = items[items.length - 1];
+            const next_cursor =
+              hasMore && last
+                ? encodeJobListCursor({
+                    updated_at: last.updated_at,
+                    id: last.id,
+                    customer_id: query.customer_id,
                     state: query.state,
                     search: query.search,
                   })
@@ -496,6 +650,254 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
             ? encodeCustomerListCursor({
                 updated_at: last.updated_at,
                 id: last.id,
+                state: query.state,
+                search: query.search,
+              })
+            : null;
+
+        return {
+          status: "ok" as const,
+          userId: owner.id,
+          displayEmail: owner.display_email,
+          accountStatus,
+          page: { items, next_cursor },
+        };
+      });
+    },
+    async getCustomerAuthorized(authUserId, customerId) {
+      return sql.begin(async (tx) => {
+        await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
+
+        const owners = await tx<
+          {
+            id: string;
+            display_email: string;
+            status: string;
+            workspace_id: string | null;
+          }[]
+        >`
+          with owner as (
+            select
+              u.id,
+              u.display_email,
+              u.status,
+              w.id as workspace_id
+            from app.app_users u
+            left join app.workspaces w on w.owner_user_id = u.id
+            left join app.memberships m
+              on m.workspace_id = w.id
+              and m.user_id = u.id
+              and m.status = 'active'
+            where u.auth_user_id = ${authUserId}
+            limit 1
+          ),
+          guc as (
+            select set_config(
+              'app.workspace_id',
+              coalesce((select workspace_id::text from owner), ''),
+              true
+            ) as workspace_guc
+          )
+          select owner.id, owner.display_email, owner.status, owner.workspace_id
+          from owner
+          cross join guc
+        `;
+
+        const owner = owners[0];
+        if (!owner) {
+          return { status: "no_user" as const };
+        }
+
+        const accountStatus = asStatus(owner.status);
+        if (!owner.workspace_id) {
+          return {
+            status: "ok" as const,
+            userId: owner.id,
+            displayEmail: owner.display_email,
+            accountStatus,
+            customer: null,
+          };
+        }
+
+        const rows = await tx<
+          {
+            id: string;
+            name: string;
+            email: string | null;
+            phone: string | null;
+            billing_address: UsAddress | null;
+            archived_at: string | null;
+            version: number;
+            created_at: string;
+            updated_at: string;
+          }[]
+        >`
+          select id, name, email, phone, billing_address_json as billing_address,
+                 archived_at, version, created_at, updated_at
+          from app.customers
+          where workspace_id = ${owner.workspace_id}::uuid
+            and id = ${customerId}::uuid
+          limit 1
+        `;
+        const row = rows[0];
+        const customer: Customer | null = row
+          ? {
+              id: row.id,
+              name: row.name,
+              email: row.email,
+              phone: row.phone,
+              billing_address: row.billing_address,
+              archived_at: row.archived_at,
+              version: row.version,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+            }
+          : null;
+
+        return {
+          status: "ok" as const,
+          userId: owner.id,
+          displayEmail: owner.display_email,
+          accountStatus,
+          customer,
+        };
+      });
+    },
+    async listJobsAuthorized(authUserId, query) {
+      return sql.begin(async (tx) => {
+        await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
+
+        const owners = await tx<
+          {
+            id: string;
+            display_email: string;
+            status: string;
+            workspace_id: string | null;
+            customer_exists: boolean;
+          }[]
+        >`
+          with owner as (
+            select
+              u.id,
+              u.display_email,
+              u.status,
+              w.id as workspace_id
+            from app.app_users u
+            left join app.workspaces w on w.owner_user_id = u.id
+            left join app.memberships m
+              on m.workspace_id = w.id
+              and m.user_id = u.id
+              and m.status = 'active'
+            where u.auth_user_id = ${authUserId}
+            limit 1
+          ),
+          guc as (
+            select set_config(
+              'app.workspace_id',
+              coalesce((select workspace_id::text from owner), ''),
+              true
+            ) as workspace_guc
+          ),
+          customer_check as (
+            select exists(
+              select 1
+              from app.customers c
+              where c.workspace_id = (select workspace_id from owner)
+                and c.id = ${query.customer_id}::uuid
+            ) as customer_exists
+          )
+          select
+            owner.id,
+            owner.display_email,
+            owner.status,
+            owner.workspace_id,
+            customer_check.customer_exists
+          from owner
+          cross join guc
+          cross join customer_check
+        `;
+
+        const owner = owners[0];
+        if (!owner) {
+          return { status: "no_user" as const };
+        }
+
+        const accountStatus = asStatus(owner.status);
+        if (!owner.workspace_id || !owner.customer_exists) {
+          return { status: "customer_not_found" as const };
+        }
+
+        const cursor = query.cursor
+          ? decodeJobListCursor(query.cursor, {
+              customer_id: query.customer_id,
+              state: query.state,
+              search: query.search,
+            })
+          : null;
+        const searchPattern =
+          query.search !== null ? `%${escapeLikePattern(query.search)}%` : null;
+
+        const stateFilter =
+          query.state === "all"
+            ? tx``
+            : query.state === "active"
+              ? tx`and lifecycle <> 'archived'`
+              : query.state === "archived"
+                ? tx`and lifecycle = 'archived'`
+                : tx`and lifecycle = ${query.state}`;
+
+        const searchFilter =
+          searchPattern === null
+            ? tx``
+            : tx`and title ilike ${searchPattern} escape '\\'`;
+
+        const cursorFilter =
+          cursor === null
+            ? tx``
+            : tx`and (
+                updated_at < ${cursor.updated_at}::timestamptz
+                or (
+                  updated_at = ${cursor.updated_at}::timestamptz
+                  and id < ${cursor.id}::uuid
+                )
+              )`;
+
+        const rows = await tx<
+          {
+            id: string;
+            title: string;
+            lifecycle: string;
+            updated_at: string;
+            customer_id: string;
+          }[]
+        >`
+          select id, title, lifecycle, updated_at, customer_id
+          from app.jobs
+          where workspace_id = ${owner.workspace_id}::uuid
+            and customer_id = ${query.customer_id}::uuid
+          ${stateFilter}
+          ${searchFilter}
+          ${cursorFilter}
+          order by updated_at desc, id desc
+          limit ${query.limit + 1}
+        `;
+
+        const hasMore = rows.length > query.limit;
+        const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+        const items: JobSummary[] = pageRows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          lifecycle: row.lifecycle as JobLifecycle,
+          updated_at: row.updated_at,
+          customer_id: row.customer_id,
+        }));
+        const last = items[items.length - 1];
+        const next_cursor =
+          hasMore && last
+            ? encodeJobListCursor({
+                updated_at: last.updated_at,
+                id: last.id,
+                customer_id: query.customer_id,
                 state: query.state,
                 search: query.search,
               })

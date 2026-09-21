@@ -199,7 +199,7 @@ Additive read required by S19. PRD inventory is a minimum contract, not a ceilin
 
 **Errors.** 401; 404 generic; 422 only for malformed path if distinguished without leaking tenant validity — prefer 404 for any well-formed UUID that is not in this workspace.
 
-**Tests.** QA03; archived customer still readable; no jobs array in payload.
+**Tests.** QA03; archived customer still readable; no jobs array in payload. **Evidence (CUST-API-03, 2026-09-21):** `customers.detail.test.ts` + live `customers.detail.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`).
 
 Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is not in-workspace, the jobs call also 404s.
 
@@ -349,15 +349,17 @@ PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 
 | Entities | `jobs` (and existence check on `customers` when filtered) |
 | Tenant isolation | Never return another workspace’s jobs. Foreign `customer_id` is 404, not an empty list (avoids existence oracle vs GET customer) |
 
-**Query.** `cursor?`, `limit?`, `search?`, `state?` / archive filter as PRD, plus `customer_id?`.
+**Query.** `customer_id` (required for CUST-API-03 / S19 associated jobs), `cursor?`, `limit?` (default 25, max 100), `search?`, `state?` (`all` default, `active`, `archived`, or a lifecycle). Broader unfiltered workspace job list remains deferred with POST /jobs (CUST-JOB-01).
 
-**Response `data`.** `{ items, next_cursor }` with job summary fields sufficient for S19: `id`, `title`, `lifecycle`, `updated_at`, `customer_id`. Do not include internal notes on a Customer screen if avoidable; S19 needs associated jobs, not a full job editor.
+**Ordering.** `(updated_at, id) DESC` (matches `jobs_workspace_customer_updated_id_idx`).
 
-**Errors.** 401; 404 if `customer_id` not in workspace; 422 query.
+**Response `data`.** `{ items, next_cursor }` with job summary fields sufficient for S19: `id`, `title`, `lifecycle`, `updated_at`, `customer_id`. Do not include `workspace_id`, `created_by`, `internal_notes`, entitlement, or version fields. Do not include internal notes on a Customer screen if avoidable; S19 needs associated jobs, not a full job editor.
 
-**Tests.** Filter returns only that customer’s jobs; other owner’s customer_id 404; empty jobs for a valid own customer is `items: []`, not 404.
+**Errors.** 401; 404 if `customer_id` not in workspace (unknown and cross-tenant identical); 422 query (including missing/malformed `customer_id`).
 
-Full Jobs feature (lifecycle actions, documents) is out of scope except as needed for this filter and POST below.
+**Tests.** Filter returns only that customer’s jobs; other owner’s customer_id 404; empty jobs for a valid own customer is `items: []`, not 404. **Evidence (CUST-API-03, 2026-09-21):** `jobs.list.test.ts` + live `jobs.list.live.test.ts` on `vlpjaamdjtmtqtpwbhzq`.
+
+Full Jobs feature (lifecycle actions, documents, unfiltered list, POST) is out of scope except as needed for this filter; POST below remains CUST-JOB-01.
 
 ---
 

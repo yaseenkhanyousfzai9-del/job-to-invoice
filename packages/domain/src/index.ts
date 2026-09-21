@@ -1,4 +1,4 @@
-export { AppError, validationFailed, unauthenticated, forbidden, conflict } from "./errors.ts";
+export { AppError, validationFailed, unauthenticated, forbidden, conflict, notFound } from "./errors.ts";
 export { createRequestId, isUuid } from "./ids.ts";
 export { normalizeEmail, validateEmail, validateOptionalEmail, maskEmail } from "./email.ts";
 export { validateOptionalE164 } from "./phone.ts";
@@ -69,3 +69,18 @@ export {
   escapeLikePattern,
   type CustomerListCursorPayload,
 } from "./customer-list-cursor.ts";
+export {
+  JOB_LIFECYCLES,
+  JOB_TITLE_MAX,
+  JOB_TITLE_MIN,
+  parseJobListQuery,
+  type JobLifecycle,
+  type JobListQuery,
+  type JobListState,
+  type JobSummary,
+} from "./job.ts";
+export {
+  decodeJobListCursor,
+  encodeJobListCursor,
+  type JobListCursorPayload,
+} from "./job-list-cursor.ts";

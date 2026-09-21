@@ -51,3 +51,8 @@ export function conflict(
 ): AppError {
   return new AppError(code, message, false, 409, fieldErrors, details);
 }
+
+/** Generic 404 — identical for unknown and cross-tenant ids (AUTHZ01 / QA03). */
+export function notFound(message = "Not found."): AppError {
+  return new AppError("NOT_FOUND", message, false, 404);
+}
