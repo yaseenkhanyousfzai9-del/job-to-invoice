@@ -74,13 +74,21 @@ export {
   type CustomerListCursorPayload,
 } from "./customer-list-cursor.ts";
 export {
+  CUSTOMER_ARCHIVED,
   JOB_LIFECYCLES,
+  JOB_MODES,
   JOB_TITLE_MAX,
   JOB_TITLE_MIN,
+  customerArchivedForJobCreate,
+  parseCreateJobInput,
   parseJobListQuery,
+  parseJobTitle,
+  type CreateJobInput,
+  type CreatedJob,
   type JobLifecycle,
   type JobListQuery,
   type JobListState,
+  type JobMode,
   type JobSummary,
 } from "./job.ts";
 export {

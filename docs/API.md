@@ -387,10 +387,17 @@ PRD: client UUID, customer, title, site, mode; create draft.
 
 **Request (minimum).** `{ "id": "uuid", "customer_id": "uuid", "title": "string", "site_address": object | null, "no_site": boolean, "mode": "quote" | "direct_invoice" }`
 
+**Site / no_site (PRD VAL02).** `no_site: true` → `site_address` must be null/absent. `no_site: false` → `site_address` required (US address VAL02). Billing address is not accepted here.
+
+**Server defaults.** `lifecycle=draft`, `version=1`, `scope_version=0`. Client cannot set workspace/lifecycle/version/scope/entitlement/internal fields. `mode` is accepted for the create contract (future `job_created` analytics); document draft rows are not created in this slice.
+
+**Response `data`.** Created job: JobSummary fields (`id`, `title`, `lifecycle`, `updated_at`, `customer_id`) plus `version`, `scope_version`, `no_site`, `site_address`, `mode`. Do not include `workspace_id`, `created_by`, `internal_notes`, or entitlement fields.
+
 Do not implement quote editor here. Creating the draft document row may wait for Quote; a job header is enough for Customer reference tests if domain requires a draft — if `document_drafts` is not migrated yet, persist the job only.
 
 **Tests.** Bind active customer; archived customer rejected; foreign customer_id 404; job appears on `GET /jobs?customer_id=`.
 
+**Evidence (CUST-JOB-01 API, 2026-09-21):** Memory `jobs.create.test.ts` + live `jobs.create.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Active create → 201 draft/version=1/scope_version=0; list-by-customer includes row; idempotent replay; `IDEMPOTENCY_MISMATCH`; unknown/cross-tenant identical 404; archived → 422 `CUSTOMER_ARCHIVED`. S06 mobile Create Job / Customer picker UI remains PENDING.
 ---
 
 ## Tenant-isolation tests (all Customer routes)

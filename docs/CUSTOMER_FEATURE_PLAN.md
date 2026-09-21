@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01–**CUST-API-06**, and CUST-UI-01–**CUST-UI-06** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 / S06 (list-by-customer read shipped in CUST-API-03). **S19** (Customers tab per PRD: search/list, create, detail with jobs, archive rather than destructive delete where referenced) is **VERIFIED** (2026-09-21). Create Job is **not** an S19 item — it is **S06 / CUST-JOB-01** and remains open. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01–**CUST-API-06**, and CUST-UI-01–**CUST-UI-06** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). **Create Job API** (`POST /v1/jobs`, CUST-JOB-01 server half) is **VERIFIED** (memory + live US 2026-09-21). **S06 / Customer picker mobile UI** remains **PENDING**. List-by-customer read shipped in CUST-API-03. **S19** is **VERIFIED** (2026-09-21). Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -1646,6 +1646,8 @@ UI recordings of both paths plus 409 fixture.
 
 Customer picker inside Create Job
 
+**Status:** Create Job API (`POST /v1/jobs`) = **VERIFIED** (2026-09-21, memory + live US `vlpjaamdjtmtqtpwbhzq`). S06 / Customer picker mobile UI = **PENDING**.
+
 ### PRD IDs
 
 S06, CUS01, CUS02, VAL01, JOB01 (job has one customer), `POST /jobs` (minimum), QA14 (do not allow later reset in this slice beyond documenting the rule), DEC10
@@ -1668,11 +1670,11 @@ This is the minimum Jobs surface needed for Customer correctness, not the full J
 
 ### UI work
 
-Customer field, search, create sheet, selected customer shown by name. Archived customers not listed. After creating a customer in-sheet, it becomes the selection.
+Customer field, search, create sheet, selected customer shown by name. Archived customers not listed. After creating a customer in-sheet, it becomes the selection. **Not started in this API-only pass.**
 
 ### API work
 
-Active customer list + create customer + create job bound to that customer. Reject job create with another tenant's customer id (404/422 generic, SEC02).
+**VERIFIED 2026-09-21:** `POST /v1/jobs` with client UUID, active `customer_id`, title (VAL01 1–120), `no_site` / `site_address` (VAL02), `mode` (`quote`|`direct_invoice`). Idempotency-Key required. Unknown/cross-tenant customer → identical 404. Own archived customer → 422 `CUSTOMER_ARCHIVED`. Defaults: `lifecycle=draft`, `version=1`, `scope_version=0`. Job appears on `GET /v1/jobs?customer_id=`. Evidence: `jobs.create.test.ts`, `jobs.create.live.test.ts`.
 
 ### Database work
 
@@ -1712,14 +1714,17 @@ Picker is a list with headings, not colour-only selection.
 - Foreign customer_id rejected
 - Identical-name customers are distinct selectable rows
 - No Contacts permission requested
+- API: active create, archived reject, idempotency, list appearance (VERIFIED)
 
 ### Exit criteria
 
-A draft job can be created against an active customer. Archived customers cannot be chosen for new jobs.
+A draft job can be created against an active customer (API **done**). Archived customers cannot be chosen for new jobs (API **done**; picker UI pending).
 
 ### Evidence required before VERIFIED
 
 E2E: create customer → appear in picker → create job → customer detail shows the job. Archived customer omitted from picker.
+
+**API evidence (2026-09-21):** Memory + live US create/list/idempotency/archived/cross-tenant. Full CUST-JOB-01 / S06 remains incomplete until mobile picker UI.
 
 ---
 
@@ -1982,10 +1987,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). **CUST-API-06** (Delete Customer API) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-06** (Delete Customer mobile UI) is **VERIFIED** (physical Android 2026-09-21). **S19** is **VERIFIED** for its PRD scope. Next open Customer-adjacent slice is **CUST-JOB-01** / **S06** (Create Job / picker bind), by authorization.
-3. Jobs HTTP create (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind; list-by-customer read is CUST-API-03 VERIFIED.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). **CUST-API-06** (Delete Customer API) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-06** (Delete Customer mobile UI) is **VERIFIED** (physical Android 2026-09-21). **S19** is **VERIFIED** for its PRD scope. **Create Job API** (`POST /v1/jobs`) is **VERIFIED** (2026-09-21). **S06 / Customer picker mobile UI** remains **PENDING**.
+3. Jobs HTTP create API is done; S06 picker bind UI still required before full CUST-JOB-01 / S06 VERIFIED.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start Create Job until authorized. Next unimplemented Customer-adjacent slice is **CUST-JOB-01** (Create Job / picker bind / S06), by authorization.
+Do not start S06 mobile Create Job / Customer picker until authorized. Next unimplemented Customer-adjacent UI is **S06 picker** (CUST-JOB-01 UI half).

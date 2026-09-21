@@ -9,6 +9,7 @@ import {
 } from "@job-to-invoice/domain";
 import type {
   AccountStatus,
+  CreateJobInput,
   Customer,
   DuplicateCustomerMatch,
   JobLifecycle,
@@ -668,35 +669,73 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
             return { items, next_cursor };
           },
           async createJob(input) {
-            const rows = await tx<
-              {
-                id: string;
-                title: string;
-                lifecycle: string;
-                updated_at: string;
-                customer_id: string;
-              }[]
-            >`
-              insert into app.jobs (
-                id, workspace_id, customer_id, title, created_by, created_at, updated_at
-              ) values (
-                ${input.id}::uuid, ${input.workspaceId}::uuid, ${input.customerId}::uuid,
-                ${input.title}, ${input.createdBy}::uuid,
-                ${input.now}::timestamptz, ${input.now}::timestamptz
-              )
-              returning id, title, lifecycle, updated_at, customer_id
-            `;
-            const row = rows[0];
-            if (!row) {
-              throw new Error("job create failed");
+            const siteJson =
+              input.fields.site_address === null
+                ? null
+                : JSON.stringify(input.fields.site_address);
+            try {
+              const rows = await tx<
+                {
+                  id: string;
+                  title: string;
+                  lifecycle: string;
+                  updated_at: string;
+                  customer_id: string;
+                  version: number;
+                  scope_version: number;
+                  no_site: boolean;
+                  site_address_json: unknown;
+                }[]
+              >`
+                insert into app.jobs (
+                  id, workspace_id, customer_id, title,
+                  site_address_json, no_site,
+                  created_by, created_at, updated_at
+                ) values (
+                  ${input.fields.id}::uuid,
+                  ${input.workspaceId}::uuid,
+                  ${input.fields.customer_id}::uuid,
+                  ${input.fields.title},
+                  ${siteJson}::jsonb,
+                  ${input.fields.no_site},
+                  ${input.createdBy}::uuid,
+                  ${input.now}::timestamptz,
+                  ${input.now}::timestamptz
+                )
+                returning
+                  id, title, lifecycle, updated_at, customer_id,
+                  version, scope_version, no_site, site_address_json
+              `;
+              const row = rows[0];
+              if (!row) {
+                throw new Error("job create failed");
+              }
+              const site =
+                row.site_address_json === null || row.site_address_json === undefined
+                  ? null
+                  : (row.site_address_json as CreateJobInput["site_address"]);
+              return {
+                id: row.id,
+                title: row.title,
+                lifecycle: row.lifecycle as JobLifecycle,
+                updated_at: row.updated_at,
+                customer_id: row.customer_id,
+                version: row.version,
+                scope_version: row.scope_version,
+                no_site: row.no_site,
+                site_address: site,
+                mode: input.fields.mode,
+              };
+            } catch (error) {
+              const code =
+                error && typeof error === "object" && "code" in error
+                  ? String((error as { code: unknown }).code)
+                  : "";
+              if (code === "23505") {
+                throw conflict("CONFLICT", "A job with this id already exists.");
+              }
+              throw error;
             }
-            return {
-              id: row.id,
-              title: row.title,
-              lifecycle: row.lifecycle as JobLifecycle,
-              updated_at: row.updated_at,
-              customer_id: row.customer_id,
-            };
           },
           async listJobs(input) {
             const query = input.query;

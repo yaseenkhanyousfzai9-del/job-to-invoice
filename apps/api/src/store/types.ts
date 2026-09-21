@@ -1,6 +1,8 @@
 import type {
   AccountStatus,
   CreateCustomerInput,
+  CreateJobInput,
+  CreatedJob,
   Customer,
   CustomerListQuery,
   DuplicateCustomerMatch,
@@ -168,13 +170,11 @@ export type OwnerTx = {
     query: CustomerListQuery;
   }): Promise<{ items: Customer[]; next_cursor: string | null }>;
   createJob(input: {
-    id: string;
     workspaceId: string;
-    customerId: string;
     createdBy: string;
-    title: string;
+    fields: CreateJobInput;
     now: string;
-  }): Promise<JobSummary>;
+  }): Promise<CreatedJob>;
   listJobs(input: {
     workspaceId: string;
     query: JobListQuery;

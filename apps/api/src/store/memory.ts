@@ -1,3 +1,4 @@
+import type { CreatedJob, Customer, JobLifecycle, JobSummary } from "@job-to-invoice/domain";
 import {
   conflict,
   decodeCustomerListCursor,
@@ -6,7 +7,6 @@ import {
   encodeJobListCursor,
   nextArchivedAt,
 } from "@job-to-invoice/domain";
-import type { Customer, JobLifecycle, JobSummary } from "@job-to-invoice/domain";
 import type {
   AllowanceRecord,
   AppUserRecord,
@@ -339,15 +339,18 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
     },
     async createJob(input) {
       const customers = state.customersByWorkspace.get(input.workspaceId) ?? [];
-      if (!customers.some((row) => row.id === input.customerId)) {
+      if (!customers.some((row) => row.id === input.fields.customer_id)) {
         throw new Error("customer missing for job");
       }
       const rows = state.jobsByWorkspace.get(input.workspaceId) ?? [];
+      if (rows.some((row) => row.id === input.fields.id)) {
+        throw conflict("CONFLICT", "A job with this id already exists.");
+      }
       const row: JobRow = {
-        id: input.id,
+        id: input.fields.id,
         workspace_id: input.workspaceId,
-        customer_id: input.customerId,
-        title: input.title,
+        customer_id: input.fields.customer_id,
+        title: input.fields.title,
         lifecycle: "draft",
         updated_at: input.now,
         created_at: input.now,
@@ -355,7 +358,16 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       };
       rows.push(row);
       state.jobsByWorkspace.set(input.workspaceId, rows);
-      return toJobSummary(row);
+      return {
+        ...toJobSummary(row),
+        version: 1,
+        scope_version: 0,
+        no_site: input.fields.no_site,
+        site_address: input.fields.site_address
+          ? { ...input.fields.site_address }
+          : null,
+        mode: input.fields.mode,
+      } satisfies CreatedJob;
     },
     async listJobs(input) {
       const query = input.query;
