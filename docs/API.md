@@ -281,11 +281,13 @@ Empty email: no duplicate check.
 
 Cannot set `archived_at` here. Duplicate-email protocol applies when the new normalized email collides with a **different** customer in the same workspace.
 
-**Response `data`.** Updated Customer, incremented `version`.
+**Response `data`.** Updated Customer, incremented `version`. Successful updates always increment `version` (including same-value contact patches). Clearing optional fields is supported with explicit `null` for `email`, `phone`, and `billing_address`. Archived customers remain editable (contact fields only; `archived_at` is not mutable here).
 
-**Errors.** 401; 404 generic; 422; 409 `VERSION_CONFLICT` (stale If-Match); 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`.
+**Errors.** 401; 404 generic; 422 (including missing/malformed If-Match or Idempotency-Key); 409 `VERSION_CONFLICT` (stale If-Match; `error.details.server` is the current public Customer); 409 `DUPLICATE_CUSTOMER_EMAIL` (same protocol as create; self excluded); 409 `IDEMPOTENCY_MISMATCH`.
 
-**Tests.** 1→2 version; missing If-Match 422; stale If-Match 409 and no write; PATCH does not change any snapshot table (even if empty); cross-tenant 404.
+**Idempotency.** Replay of the same key + same body + same If-Match returns the stored success without a second version increment (even when the original If-Match is now stale relative to the live row).
+
+**Tests.** 1→2 version; missing If-Match 422; stale If-Match 409 and no write; PATCH does not change any snapshot table (even if empty / not yet created); cross-tenant 404; live US development verification 2026-09-21.
 
 ---
 

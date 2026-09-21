@@ -11,6 +11,7 @@ import {
   parseCustomerArchiveCommand,
   parseCustomerListQuery,
   parseCustomerName,
+  parseIfMatchVersion,
   parseUpdateCustomerInput,
 } from "./customer.ts";
 import { normalizeEmail, validateOptionalEmail } from "./email.ts";
@@ -162,6 +163,16 @@ test("update customer permits contact fields and forbids archive/ownership", () 
   });
   assert.equal(confirmed.confirm_duplicate_email, true);
   assert.equal(confirmed.normalized_email, "new@example.com");
+});
+
+test("If-Match version parsing requires a positive integer", () => {
+  assert.equal(parseIfMatchVersion("1"), 1);
+  assert.equal(parseIfMatchVersion(3), 3);
+  assert.throws(() => parseIfMatchVersion(undefined));
+  assert.throws(() => parseIfMatchVersion(""));
+  assert.throws(() => parseIfMatchVersion("abc"));
+  assert.throws(() => parseIfMatchVersion("0"));
+  assert.throws(() => parseIfMatchVersion("-1"));
 });
 
 test("customer list query defaults and rejects invalid limit/state", () => {

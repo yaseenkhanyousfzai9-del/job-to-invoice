@@ -358,3 +358,53 @@ export function duplicateEmailWarning(
     duplicates: duplicates.map((item) => ({ id: item.id, name: item.name })),
   };
 }
+
+/** If-Match header: required numeric `customers.version` (SYNC03 / API01). */
+export function parseIfMatchVersion(raw: unknown): number {
+  if (raw === undefined || raw === null) {
+    throw validationFailed({
+      "If-Match": ["If-Match with the current version is required."],
+    });
+  }
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 1) {
+      throw validationFailed({
+        "If-Match": ["If-Match must be a positive integer version."],
+      });
+    }
+    return value;
+  }
+  if (typeof value !== "string") {
+    throw validationFailed({
+      "If-Match": ["If-Match must be a positive integer version."],
+    });
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw validationFailed({
+      "If-Match": ["If-Match with the current version is required."],
+    });
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    throw validationFailed({
+      "If-Match": ["If-Match must be a positive integer version."],
+    });
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw validationFailed({
+      "If-Match": ["If-Match must be a positive integer version."],
+    });
+  }
+  return parsed;
+}
+
+export function versionConflict(server: Customer): ReturnType<typeof conflict> {
+  return conflict(
+    "VERSION_CONFLICT",
+    "This record changed. Review both copies and try again.",
+    {},
+    { server },
+  );
+}

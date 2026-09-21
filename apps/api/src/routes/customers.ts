@@ -5,7 +5,10 @@ import {
   notFound,
   parseCreateCustomerInput,
   parseCustomerListQuery,
+  parseIfMatchVersion,
+  parseUpdateCustomerInput,
   validationFailed,
+  versionConflict,
   type Customer,
 } from "@job-to-invoice/domain";
 import type { FastifyInstance } from "fastify";
@@ -18,7 +21,11 @@ import {
 import { hashCanonicalJson, successEnvelope } from "../envelope.ts";
 import type { AuthStore } from "../store/types.ts";
 
-const ROUTE = "POST /v1/customers";
+const CREATE_ROUTE = "POST /v1/customers";
+
+function patchRoute(customerId: string): string {
+  return `PATCH /v1/customers/${customerId}`;
+}
 
 function customerErrorEnvelope(
   requestId: string,
@@ -118,6 +125,114 @@ export async function registerCustomersRoute(
     return successEnvelope(request.id, authorized.customer);
   });
 
+  app.patch<{ Params: { id: string } }>("/v1/customers/:id", async (request, reply) => {
+    const owner = requireOwner(request);
+    requireActiveOwner(owner);
+
+    const customerId = request.params.id;
+    if (!isUuid(customerId)) {
+      throw validationFailed({ id: ["Customer id must be a UUID."] });
+    }
+
+    const idempotencyKeyHeader = request.headers["idempotency-key"];
+    const idempotencyKey =
+      typeof idempotencyKeyHeader === "string" ? idempotencyKeyHeader : undefined;
+    if (!idempotencyKey || !isUuid(idempotencyKey)) {
+      throw validationFailed({
+        "Idempotency-Key": ["A UUID Idempotency-Key is required."],
+      });
+    }
+
+    const expectedVersion = parseIfMatchVersion(request.headers["if-match"]);
+    const fields = parseUpdateCustomerInput(request.body);
+    const route = patchRoute(customerId);
+    const requestHash = hashCanonicalJson({
+      ...fields,
+      if_match: expectedVersion,
+    });
+
+    return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
+      const existingKey = await tx.getIdempotency(owner.userId, idempotencyKey);
+      if (existingKey) {
+        if (existingKey.request_hash !== requestHash || existingKey.route !== route) {
+          throw conflict(
+            "IDEMPOTENCY_MISMATCH",
+            "This Idempotency-Key was used with a different request.",
+          );
+        }
+        void reply.status(existingKey.status_code);
+        return existingKey.response_json;
+      }
+
+      const bundle = await tx.findWorkspaceByOwner(owner.userId);
+      if (!bundle) {
+        throw conflict("WORKSPACE_REQUIRED", "Create a workspace before editing customers.");
+      }
+
+      if (fields.normalized_email !== undefined && fields.normalized_email !== null) {
+        if (!fields.confirm_duplicate_email) {
+          const duplicates = await tx.findCustomersByNormalizedEmail(
+            bundle.workspace.id,
+            fields.normalized_email,
+            { excludeCustomerId: customerId },
+          );
+          if (duplicates.length > 0) {
+            const appError = duplicateCustomerEmailConflict(duplicates);
+            const body = customerErrorEnvelope(request.id, {
+              code: appError.code,
+              message: appError.message,
+              fieldErrors: appError.fieldErrors,
+              retryable: appError.retryable,
+              ...(appError.details !== undefined ? { details: appError.details } : {}),
+            });
+            await tx.putIdempotency({
+              actor_scope: owner.userId,
+              key: idempotencyKey,
+              route,
+              request_hash: requestHash,
+              status_code: 409,
+              response_json: body,
+            });
+            void reply.status(409);
+            return body;
+          }
+        } else {
+          await tx.findCustomersByNormalizedEmail(bundle.workspace.id, fields.normalized_email, {
+            excludeCustomerId: customerId,
+          });
+        }
+      }
+
+      const now = new Date().toISOString();
+      const result = await tx.updateCustomer({
+        workspaceId: bundle.workspace.id,
+        customerId,
+        expectedVersion,
+        fields,
+        now,
+      });
+
+      if (result.status === "not_found") {
+        throw notFound();
+      }
+      if (result.status === "version_conflict") {
+        throw versionConflict(result.customer);
+      }
+
+      const body = successEnvelope(request.id, result.customer);
+      await tx.putIdempotency({
+        actor_scope: owner.userId,
+        key: idempotencyKey,
+        route,
+        request_hash: requestHash,
+        status_code: 200,
+        response_json: body,
+      });
+      void reply.status(200);
+      return body;
+    });
+  });
+
   app.post("/v1/customers", async (request, reply) => {
     const owner = requireOwner(request);
     requireActiveOwner(owner);
@@ -137,7 +252,7 @@ export async function registerCustomersRoute(
     return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
       const existingKey = await tx.getIdempotency(owner.userId, idempotencyKey);
       if (existingKey) {
-        if (existingKey.request_hash !== requestHash || existingKey.route !== ROUTE) {
+        if (existingKey.request_hash !== requestHash || existingKey.route !== CREATE_ROUTE) {
           throw conflict(
             "IDEMPOTENCY_MISMATCH",
             "This Idempotency-Key was used with a different request.",
@@ -169,7 +284,7 @@ export async function registerCustomersRoute(
           await tx.putIdempotency({
             actor_scope: owner.userId,
             key: idempotencyKey,
-            route: ROUTE,
+            route: CREATE_ROUTE,
             request_hash: requestHash,
             status_code: 409,
             response_json: body,
@@ -193,7 +308,7 @@ export async function registerCustomersRoute(
       await tx.putIdempotency({
         actor_scope: owner.userId,
         key: idempotencyKey,
-        route: ROUTE,
+        route: CREATE_ROUTE,
         request_hash: requestHash,
         status_code: 201,
         response_json: body,

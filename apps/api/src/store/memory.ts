@@ -192,10 +192,15 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       state.jobsByWorkspace.set(workspaceId, []);
       return cloneBundle(bundle);
     },
-    async findCustomersByNormalizedEmail(workspaceId, normalizedEmail) {
+    async findCustomersByNormalizedEmail(workspaceId, normalizedEmail, options) {
       const rows = state.customersByWorkspace.get(workspaceId) ?? [];
+      const excludeId = options?.excludeCustomerId;
       return rows
-        .filter((row) => row.normalized_email === normalizedEmail)
+        .filter(
+          (row) =>
+            row.normalized_email === normalizedEmail &&
+            (excludeId === undefined || row.id !== excludeId),
+        )
         .map((row) => ({ id: row.id, name: row.name }));
     },
     async getCustomer(workspaceId, customerId) {
@@ -222,6 +227,32 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       rows.push(row);
       state.customersByWorkspace.set(input.workspaceId, rows);
       return toCustomer(row);
+    },
+    async updateCustomer(input) {
+      const rows = state.customersByWorkspace.get(input.workspaceId) ?? [];
+      const row = rows.find((item) => item.id === input.customerId);
+      if (!row) {
+        return { status: "not_found" };
+      }
+      if (row.version !== input.expectedVersion) {
+        return { status: "version_conflict", customer: toCustomer(row) };
+      }
+      if (input.fields.name !== undefined) {
+        row.name = input.fields.name;
+      }
+      if (input.fields.email !== undefined) {
+        row.email = input.fields.email;
+        row.normalized_email = input.fields.normalized_email ?? null;
+      }
+      if (input.fields.phone !== undefined) {
+        row.phone = input.fields.phone;
+      }
+      if (input.fields.billing_address !== undefined) {
+        row.billing_address = input.fields.billing_address;
+      }
+      row.version = row.version + 1;
+      row.updated_at = input.now;
+      return { status: "updated", customer: toCustomer(row) };
     },
     async listCustomers(input) {
       const query = input.query;

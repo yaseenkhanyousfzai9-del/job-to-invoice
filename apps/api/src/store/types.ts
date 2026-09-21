@@ -6,10 +6,16 @@ import type {
   DuplicateCustomerMatch,
   JobListQuery,
   JobSummary,
+  UpdateCustomerInput,
   UsAddress,
   WorkspaceCreateInput,
   WorkspaceTrade,
 } from "@job-to-invoice/domain";
+
+export type UpdateCustomerResult =
+  | { status: "updated"; customer: Customer }
+  | { status: "not_found" }
+  | { status: "version_conflict"; customer: Customer };
 
 export type AppUserRecord = {
   id: string;
@@ -116,6 +122,7 @@ export type OwnerTx = {
   findCustomersByNormalizedEmail(
     workspaceId: string,
     normalizedEmail: string,
+    options?: { excludeCustomerId?: string },
   ): Promise<DuplicateCustomerMatch[]>;
   createWorkspace(input: {
     userId: string;
@@ -129,6 +136,13 @@ export type OwnerTx = {
     fields: CreateCustomerInput;
     now: string;
   }): Promise<Customer>;
+  updateCustomer(input: {
+    workspaceId: string;
+    customerId: string;
+    expectedVersion: number;
+    fields: UpdateCustomerInput;
+    now: string;
+  }): Promise<UpdateCustomerResult>;
   listCustomers(input: {
     workspaceId: string;
     query: CustomerListQuery;

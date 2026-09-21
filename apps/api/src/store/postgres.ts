@@ -197,14 +197,25 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               throw error;
             }
           },
-          async findCustomersByNormalizedEmail(workspaceId, normalizedEmail) {
-            const rows = await tx<{ id: string; name: string }[]>`
-              select id, name
-              from app.customers
-              where workspace_id = ${workspaceId}::uuid
-                and normalized_email = ${normalizedEmail}
-              order by created_at asc, id asc
-            `;
+          async findCustomersByNormalizedEmail(workspaceId, normalizedEmail, options) {
+            const excludeId = options?.excludeCustomerId;
+            const rows =
+              excludeId === undefined
+                ? await tx<{ id: string; name: string }[]>`
+                    select id, name
+                    from app.customers
+                    where workspace_id = ${workspaceId}::uuid
+                      and normalized_email = ${normalizedEmail}
+                    order by created_at asc, id asc
+                  `
+                : await tx<{ id: string; name: string }[]>`
+                    select id, name
+                    from app.customers
+                    where workspace_id = ${workspaceId}::uuid
+                      and normalized_email = ${normalizedEmail}
+                      and id <> ${excludeId}::uuid
+                    order by created_at asc, id asc
+                  `;
             return rows.map(
               (row): DuplicateCustomerMatch => ({
                 id: row.id,
@@ -290,6 +301,150 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               updated_at: row.updated_at,
             };
             return customer;
+          },
+          async updateCustomer(input) {
+            const locked = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                normalized_email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              select id, name, email, normalized_email, phone,
+                     billing_address_json as billing_address,
+                     archived_at, version, created_at, updated_at
+              from app.customers
+              where workspace_id = ${input.workspaceId}::uuid
+                and id = ${input.customerId}::uuid
+              for update
+            `;
+            const current = locked[0];
+            if (!current) {
+              return { status: "not_found" };
+            }
+            if (current.version !== input.expectedVersion) {
+              return {
+                status: "version_conflict",
+                customer: {
+                  id: current.id,
+                  name: current.name,
+                  email: current.email,
+                  phone: current.phone,
+                  billing_address: current.billing_address,
+                  archived_at: current.archived_at,
+                  version: current.version,
+                  created_at: current.created_at,
+                  updated_at: current.updated_at,
+                },
+              };
+            }
+
+            const nextName = input.fields.name !== undefined ? input.fields.name : current.name;
+            const nextEmail =
+              input.fields.email !== undefined ? input.fields.email : current.email;
+            const nextNormalized =
+              input.fields.email !== undefined
+                ? (input.fields.normalized_email ?? null)
+                : current.normalized_email;
+            const nextPhone =
+              input.fields.phone !== undefined ? input.fields.phone : current.phone;
+            const nextAddress =
+              input.fields.billing_address !== undefined
+                ? input.fields.billing_address
+                : current.billing_address;
+
+            const rows = await tx<
+              {
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+                billing_address: UsAddress | null;
+                archived_at: string | null;
+                version: number;
+                created_at: string;
+                updated_at: string;
+              }[]
+            >`
+              update app.customers set
+                name = ${nextName},
+                email = ${nextEmail},
+                normalized_email = ${nextNormalized},
+                phone = ${nextPhone},
+                billing_address_json = ${
+                  nextAddress === null ? null : tx.json(nextAddress)
+                },
+                version = version + 1,
+                updated_at = ${input.now}::timestamptz
+              where workspace_id = ${input.workspaceId}::uuid
+                and id = ${input.customerId}::uuid
+                and version = ${input.expectedVersion}
+              returning id, name, email, phone, billing_address_json as billing_address,
+                        archived_at, version, created_at, updated_at
+            `;
+            const row = rows[0];
+            if (!row) {
+              // Concurrent writer won between lock and update (should be rare with FOR UPDATE).
+              const again = await tx<
+                {
+                  id: string;
+                  name: string;
+                  email: string | null;
+                  phone: string | null;
+                  billing_address: UsAddress | null;
+                  archived_at: string | null;
+                  version: number;
+                  created_at: string;
+                  updated_at: string;
+                }[]
+              >`
+                select id, name, email, phone, billing_address_json as billing_address,
+                       archived_at, version, created_at, updated_at
+                from app.customers
+                where workspace_id = ${input.workspaceId}::uuid
+                  and id = ${input.customerId}::uuid
+                limit 1
+              `;
+              const existingRow = again[0];
+              if (!existingRow) {
+                return { status: "not_found" };
+              }
+              return {
+                status: "version_conflict",
+                customer: {
+                  id: existingRow.id,
+                  name: existingRow.name,
+                  email: existingRow.email,
+                  phone: existingRow.phone,
+                  billing_address: existingRow.billing_address,
+                  archived_at: existingRow.archived_at,
+                  version: existingRow.version,
+                  created_at: existingRow.created_at,
+                  updated_at: existingRow.updated_at,
+                },
+              };
+            }
+            return {
+              status: "updated",
+              customer: {
+                id: row.id,
+                name: row.name,
+                email: row.email,
+                phone: row.phone,
+                billing_address: row.billing_address,
+                archived_at: row.archived_at,
+                version: row.version,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+              },
+            };
           },
           async listCustomers(input) {
             const query = input.query;
