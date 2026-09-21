@@ -156,6 +156,11 @@ export type CustomersListController = {
   refreshPreservingFilters: (
     accessToken: string | null | undefined,
   ) => Promise<"ok" | "unauthenticated">;
+  restoreUiState: (ui: {
+    searchInput: string;
+    appliedSearch: string | null;
+    stateFilter: CustomerListState;
+  }) => void;
   dispose: () => void;
 };
 
@@ -413,6 +418,14 @@ export function createCustomersListController(options?: {
     },
     refreshPreservingFilters(accessToken) {
       return replaceList(accessToken, {}, "refresh");
+    },
+    restoreUiState(ui) {
+      setSnapshot({
+        ...snapshot,
+        searchInput: ui.searchInput,
+        appliedSearch: ui.appliedSearch,
+        stateFilter: ui.stateFilter,
+      });
     },
     dispose() {
       if (debounceHandle) {

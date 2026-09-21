@@ -19,13 +19,19 @@ import {
   Title,
 } from "../../../src/components/ui";
 import {
-  createCustomersListController,
   emptyCustomersCopy,
   presentCustomerRow,
   showCustomersEmptyState,
   showCustomersInitialLoading,
   type CustomersListSnapshot,
 } from "../../../src/features/customers/customersList";
+import {
+  customersListHasBootstrapped,
+  markCustomersListBootstrapped,
+  nextCustomersListFocusAction,
+  obtainCustomersListController,
+  syncCustomersListUiFromSnapshot,
+} from "../../../src/features/customers/customersListSession";
 import {
   CUSTOMERS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS,
   CUSTOMERS_NEW_HREF,
@@ -44,27 +50,35 @@ export default function CustomersListScreen() {
   const auth = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ customerCreated?: string }>();
-  const controller = useMemo(() => createCustomersListController(), []);
+  const controller = useMemo(() => obtainCustomersListController(), []);
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   const snapshot = controller.getSnapshot();
-  const bootstrapped = useRef(false);
   const handledCreateParam = useRef<string | null>(null);
 
   useEffect(() => {
-    return controller.subscribe(() => rerender());
+    return controller.subscribe(() => {
+      syncCustomersListUiFromSnapshot(controller.getSnapshot());
+      rerender();
+    });
   }, [controller]);
 
   useEffect(() => {
-    return () => controller.dispose();
+    return () => {
+      // Keep shared controller + UI session across Detail/New; only sync latest fields.
+      syncCustomersListUiFromSnapshot(controller.getSnapshot());
+    };
   }, [controller]);
 
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const result = bootstrapped.current
-          ? await controller.refreshPreservingFilters(auth.accessToken)
-          : await controller.bootstrap(auth.accessToken);
-        bootstrapped.current = true;
+        const action = nextCustomersListFocusAction(customersListHasBootstrapped());
+        const result =
+          action === "refresh"
+            ? await controller.refreshPreservingFilters(auth.accessToken)
+            : await controller.bootstrap(auth.accessToken);
+        markCustomersListBootstrapped();
+        syncCustomersListUiFromSnapshot(controller.getSnapshot());
         if (result === "unauthenticated") {
           await auth.signOut({ source: "401", reason: "customers_list_unauthenticated" });
         }
