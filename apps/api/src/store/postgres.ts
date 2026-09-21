@@ -537,6 +537,49 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
               },
             };
           },
+          async deleteCustomer(input) {
+            const locked = await tx<{ id: string }[]>`
+              select id
+              from app.customers
+              where workspace_id = ${input.workspaceId}::uuid
+                and id = ${input.customerId}::uuid
+              for update
+            `;
+            if (!locked[0]) {
+              return { status: "not_found" };
+            }
+
+            const referenced = await tx<{ exists: boolean }[]>`
+              select exists(
+                select 1
+                from app.jobs
+                where workspace_id = ${input.workspaceId}::uuid
+                  and customer_id = ${input.customerId}::uuid
+              ) as exists
+            `;
+            if (referenced[0]?.exists) {
+              return { status: "referenced" };
+            }
+
+            try {
+              const deleted = await tx<{ id: string }[]>`
+                delete from app.customers
+                where workspace_id = ${input.workspaceId}::uuid
+                  and id = ${input.customerId}::uuid
+                returning id
+              `;
+              if (!deleted[0]) {
+                return { status: "not_found" };
+              }
+              return { status: "deleted" };
+            } catch (error) {
+              const code = (error as { code?: string }).code;
+              if (code === "23503") {
+                return { status: "referenced" };
+              }
+              throw error;
+            }
+          },
           async listCustomers(input) {
             const query = input.query;
             const cursor = query.cursor

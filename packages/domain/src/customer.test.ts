@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { AppError } from "./errors.ts";
 import {
   CUSTOMER_LIST_DEFAULT_LIMIT,
+  customerReferencedConflict,
   duplicateCustomerEmailConflict,
   duplicateEmailWarning,
   isCustomerArchived,
@@ -205,6 +206,13 @@ test("archive helpers distinguish archive from delete", () => {
   const command = parseCustomerArchiveCommand({ archived: true });
   assert.equal(command.archived, true);
   assert.throws(() => parseCustomerArchiveCommand({ archived: true, id: "x" }));
+});
+
+test("customerReferencedConflict is archive guidance without uniqueness semantics", () => {
+  const error = customerReferencedConflict();
+  assert.equal(error.code, "CUSTOMER_REFERENCED");
+  assert.match(error.message, /Archive/i);
+  assert.equal(error.statusCode, 409);
 });
 
 test("duplicate email contract is a confirmation warning, not uniqueness", () => {

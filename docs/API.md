@@ -329,11 +329,15 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 **Request.** Empty body.
 
-**Unreferenced.** Delete row. 200 with `{ "data": { "deleted": true } }` or 204 consistent in OpenAPI — pick one at implementation and test it. Prefer 200 envelope for API02 consistency.
+**Unreferenced.** Delete row. **200** with `{ "data": { "deleted": true } }` (API02 envelope). Chosen over 204 for consistency with other owner commands.
 
-**Referenced** (any `jobs` row with this `customer_id` in this workspace). 409 `CUSTOMER_REFERENCED`. Row remains. `field_errors` / message instructs Archive. Do not invent a customer-scoped export (DEC-CUST-004).
+**Referenced** (any `jobs` row with this `customer_id` in this workspace). 409 `CUSTOMER_REFERENCED`. Row remains. Message instructs Archive. Do not invent a customer-scoped export (DEC-CUST-004). No auto-archive on failed delete. Active or archived unreferenced customers may be deleted (no archive-first prerequisite). If-Match is **not** required.
 
-**Errors.** 401; 404; 409 `CUSTOMER_REFERENCED`; 409 `IDEMPOTENCY_MISMATCH`.
+**Errors.** 401; 404; 422 (missing/malformed Idempotency-Key or non-empty body); 409 `CUSTOMER_REFERENCED`; 409 `IDEMPOTENCY_MISMATCH`.
+
+**Idempotency.** Required. Empty-body hash. Success (200) and referenced conflict (409) are stored and replayed. Replay of a successful delete returns the stored 200 `{deleted:true}` (does not become 404). Cross-tenant / unknown never returns `CUSTOMER_REFERENCED`.
+
+**Evidence (CUST-API-06, 2026-09-21):** Memory `customers.delete.test.ts` + live `customers.delete.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Unreferenced active/archived delete → 200; detail/list absent. Referenced (one/multiple/archived-referenced) → 409 `CUSTOMER_REFERENCED`; customer + jobs remain; no DB leak (`23503`/FK text absent). Unknown/cross-tenant identical generic 404 (cross-tenant referenced still 404, not 409). Idempotent success replay + `IDEMPOTENCY_MISMATCH` + referenced 409 replay. FK `ON DELETE RESTRICT` remains defense-in-depth (pre-check + 23503 → same API conflict).
 
 **Tests.** Unreferenced delete; referenced 409; archived-but-referenced 409; cross-tenant 404; API role cannot DELETE another tenant’s row via SQL.
 

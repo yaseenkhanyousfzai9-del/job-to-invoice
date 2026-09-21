@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, **CUST-API-04**, **CUST-API-05**, CUST-UI-01, CUST-UI-02, **CUST-UI-03**, **CUST-UI-04**, and **CUST-UI-05** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED — **VERIFIED:** create, list/search, detail, associated jobs read-only display, edit, archive, restore; **PENDING:** delete, Create Job. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, **CUST-API-04**, **CUST-API-05**, **CUST-API-06**, CUST-UI-01, CUST-UI-02, **CUST-UI-03**, **CUST-UI-04**, and **CUST-UI-05** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED — **VERIFIED:** create, list/search, detail, associated jobs read-only display, edit, archive, restore, delete (API); **PENDING:** Delete Customer mobile UI (CUST-UI-06), Create Job. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -777,7 +777,7 @@ Device or representative runtime recording of create + duplicate warning + Unico
 
 Customer list/search/pagination
 
-**Status: VERIFIED** (2026-09-20) — `GET /v1/customers` on US development project. CUST-UI-02 is VERIFIED (physical Android). S19 remains only partially VERIFIED (archive/restore VERIFIED via CUST-API-05 + CUST-UI-05 2026-09-21; delete / Create Job still open; detail/jobs read path is VERIFIED via CUST-API-03 + CUST-UI-03).
+**Status: VERIFIED** (2026-09-20) — `GET /v1/customers` on US development project. CUST-UI-02 is VERIFIED (physical Android). S19 remains only partially VERIFIED (archive/restore VERIFIED via CUST-API-05 + CUST-UI-05 2026-09-21; delete API VERIFIED via CUST-API-06 2026-09-21; Delete UI / Create Job still open; detail/jobs read path is VERIFIED via CUST-API-03 + CUST-UI-03).
 
 ### PRD IDs
 
@@ -1482,6 +1482,8 @@ UI recording + API list proof.
 
 Delete Customer
 
+**Status: VERIFIED** (2026-09-21) — Memory `customers.delete.test.ts` + live `customers.delete.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). CUST-UI-06 (Delete Customer mobile UI) is **not** claimed.
+
 ### PRD IDs
 
 CUS02, `DELETE /customers/{id}`, AUTHZ01, API02, PRV02 (historical records remain until account deletion), INV02
@@ -1506,16 +1508,18 @@ None.
 
 ### API work
 
-- Unreferenced → 204/200 and row gone
-- Referenced → 409 `CUSTOMER_REFERENCED`. UI offers Archive. Workspace export is EXP01 when built; do not invent a customer-scoped export (DEC-CUST-004).
-- Cross-tenant → 404, including if the id exists in another workspace
+- Unreferenced → **200** `{ "data": { "deleted": true } }` and row gone (active or archived; no archive-first)
+- Referenced → 409 `CUSTOMER_REFERENCED`. UI offers Archive. Workspace export is EXP01 when built; do not invent a customer-scoped export (DEC-CUST-004). No auto-archive on failed delete.
+- Cross-tenant → 404, including if the id exists in another workspace (never 409 for foreign referenced)
 - Repeat DELETE of unknown id → 404 (not a leak)
+- Idempotency-Key required; If-Match **not** required; empty body
+- Success and referenced 409 stored for idempotent replay
 
 Reference definition for v1 Customer launch: a row in `jobs` with this `customer_id`. When drafts/documents exist in later features, they also count. Do not wait for those tables to implement the jobs check.
 
 ### Database work
 
-Delete customer row only if no FK references. Prefer relying on FK plus a pre-check for a stable 409 code rather than a raw 23503 leak.
+Delete customer row only if no FK references. Pre-check for stable 409 plus catch `23503` → same `CUSTOMER_REFERENCED` (no raw Postgres leak). FK `ON DELETE RESTRICT` remains authoritative against races.
 
 ### Authorization
 
@@ -1523,11 +1527,11 @@ AUTHZ01. Account-deletion purge (PRV04) is a different privileged workflow and i
 
 ### Validation
 
-UUID path. No body fields.
+UUID path. No body fields. Idempotency-Key UUID required.
 
 ### Error state
 
-409 referenced, 404 generic, 401. Do not return the foreign workspace's customer name in the 409.
+409 referenced, 404 generic, 401, 422 missing key. Do not return the foreign workspace's customer name in the 409.
 
 ### Loading / empty / offline / accessibility
 
@@ -1548,6 +1552,8 @@ Destructive delete is impossible for referenced customers at API and database.
 ### Evidence required before VERIFIED
 
 API + DB tests. 409 body has no cross-tenant PII.
+
+**Evidence recorded 2026-09-21:** Memory + live US as above.
 
 ---
 
@@ -1966,10 +1972,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). S19 remains partially complete: delete and Create Job remain open.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). **CUST-API-06** (Delete Customer API) is **VERIFIED** (memory + live US 2026-09-21). S19 remains partially complete: Delete Customer mobile UI (CUST-UI-06) and Create Job remain open.
 3. Jobs HTTP create (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind; list-by-customer read is CUST-API-03 VERIFIED.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start Customer delete until authorized. Next unimplemented Customer slice after CUST-UI-05 is **CUST-API-06** (Delete Customer) or **CUST-JOB-01** (Create Job / picker bind), by authorization.
+Do not start Customer delete UI until authorized. Next unimplemented Customer slice after CUST-API-06 is **CUST-UI-06** (Delete Customer mobile UI) or **CUST-JOB-01** (Create Job / picker bind), by authorization.

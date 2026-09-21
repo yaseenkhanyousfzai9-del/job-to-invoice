@@ -22,6 +22,11 @@ export type ArchiveCustomerResult =
   | { status: "unchanged"; customer: Customer }
   | { status: "not_found" };
 
+export type DeleteCustomerResult =
+  | { status: "deleted" }
+  | { status: "referenced" }
+  | { status: "not_found" };
+
 export type AppUserRecord = {
   id: string;
   auth_user_id: string;
@@ -154,6 +159,10 @@ export type OwnerTx = {
     archived: boolean;
     now: string;
   }): Promise<ArchiveCustomerResult>;
+  deleteCustomer(input: {
+    workspaceId: string;
+    customerId: string;
+  }): Promise<DeleteCustomerResult>;
   listCustomers(input: {
     workspaceId: string;
     query: CustomerListQuery;

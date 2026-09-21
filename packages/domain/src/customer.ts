@@ -75,6 +75,7 @@ export const CUSTOMER_NAME_MAX = 120;
 export const CUSTOMER_LIST_DEFAULT_LIMIT = 25;
 export const CUSTOMER_LIST_MAX_LIMIT = 100;
 export const DUPLICATE_CUSTOMER_EMAIL = "DUPLICATE_CUSTOMER_EMAIL";
+export const CUSTOMER_REFERENCED = "CUSTOMER_REFERENCED";
 
 const CREATE_ALLOWED = new Set([
   "name",
@@ -406,5 +407,12 @@ export function versionConflict(server: Customer): ReturnType<typeof conflict> {
     "This record changed. Review both copies and try again.",
     {},
     { server },
+  );
+}
+
+export function customerReferencedConflict(): ReturnType<typeof conflict> {
+  return conflict(
+    CUSTOMER_REFERENCED,
+    "This customer is linked to existing jobs and cannot be deleted. Archive the customer instead.",
   );
 }

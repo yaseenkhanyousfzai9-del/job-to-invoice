@@ -1,5 +1,6 @@
 import {
   conflict,
+  customerReferencedConflict,
   duplicateCustomerEmailConflict,
   isUuid,
   notFound,
@@ -31,6 +32,12 @@ function patchRoute(customerId: string): string {
 function archiveRoute(customerId: string): string {
   return `POST /v1/customers/${customerId}/archive`;
 }
+
+function deleteRoute(customerId: string): string {
+  return `DELETE /v1/customers/${customerId}`;
+}
+
+const DELETE_EMPTY_BODY_HASH = hashCanonicalJson(null);
 
 function customerErrorEnvelope(
   requestId: string,
@@ -291,6 +298,97 @@ export async function registerCustomersRoute(
       }
 
       const body = successEnvelope(request.id, result.customer);
+      await tx.putIdempotency({
+        actor_scope: owner.userId,
+        key: idempotencyKey,
+        route,
+        request_hash: requestHash,
+        status_code: 200,
+        response_json: body,
+      });
+      void reply.status(200);
+      return body;
+    });
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/customers/:id", async (request, reply) => {
+    const owner = requireOwner(request);
+    requireActiveOwner(owner);
+
+    const customerId = request.params.id;
+    if (!isUuid(customerId)) {
+      throw validationFailed({ id: ["Customer id must be a UUID."] });
+    }
+
+    const idempotencyKeyHeader = request.headers["idempotency-key"];
+    const idempotencyKey =
+      typeof idempotencyKeyHeader === "string" ? idempotencyKeyHeader : undefined;
+    if (!idempotencyKey || !isUuid(idempotencyKey)) {
+      throw validationFailed({
+        "Idempotency-Key": ["A UUID Idempotency-Key is required."],
+      });
+    }
+
+    const rawBody = request.body;
+    if (
+      rawBody !== undefined &&
+      rawBody !== null &&
+      !(typeof rawBody === "object" && !Array.isArray(rawBody) && Object.keys(rawBody).length === 0)
+    ) {
+      throw validationFailed({ body: ["Delete must not include a body."] });
+    }
+
+    const route = deleteRoute(customerId);
+    const requestHash = DELETE_EMPTY_BODY_HASH;
+
+    return deps.store.withOwnerTransaction(owner.token.subject, async (tx) => {
+      const existingKey = await tx.getIdempotency(owner.userId, idempotencyKey);
+      if (existingKey) {
+        if (existingKey.request_hash !== requestHash || existingKey.route !== route) {
+          throw conflict(
+            "IDEMPOTENCY_MISMATCH",
+            "This Idempotency-Key was used with a different request.",
+          );
+        }
+        void reply.status(existingKey.status_code);
+        return existingKey.response_json;
+      }
+
+      const bundle = await tx.findWorkspaceByOwner(owner.userId);
+      if (!bundle) {
+        throw conflict("WORKSPACE_REQUIRED", "Create a workspace before deleting customers.");
+      }
+
+      const result = await tx.deleteCustomer({
+        workspaceId: bundle.workspace.id,
+        customerId,
+      });
+
+      if (result.status === "not_found") {
+        throw notFound();
+      }
+
+      if (result.status === "referenced") {
+        const appError = customerReferencedConflict();
+        const body = customerErrorEnvelope(request.id, {
+          code: appError.code,
+          message: appError.message,
+          fieldErrors: appError.fieldErrors,
+          retryable: appError.retryable,
+        });
+        await tx.putIdempotency({
+          actor_scope: owner.userId,
+          key: idempotencyKey,
+          route,
+          request_hash: requestHash,
+          status_code: 409,
+          response_json: body,
+        });
+        void reply.status(409);
+        return body;
+      }
+
+      const body = successEnvelope(request.id, { deleted: true });
       await tx.putIdempotency({
         actor_scope: owner.userId,
         key: idempotencyKey,

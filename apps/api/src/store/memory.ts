@@ -270,6 +270,20 @@ export function createMemoryAuthStore(): MemoryAuthHarness {
       row.updated_at = input.now;
       return { status: "updated", customer: toCustomer(row) };
     },
+    async deleteCustomer(input) {
+      const rows = state.customersByWorkspace.get(input.workspaceId) ?? [];
+      const index = rows.findIndex((item) => item.id === input.customerId);
+      if (index < 0) {
+        return { status: "not_found" };
+      }
+      const jobs = state.jobsByWorkspace.get(input.workspaceId) ?? [];
+      if (jobs.some((job) => job.customer_id === input.customerId)) {
+        return { status: "referenced" };
+      }
+      rows.splice(index, 1);
+      state.customersByWorkspace.set(input.workspaceId, rows);
+      return { status: "deleted" };
+    },
     async listCustomers(input) {
       const query = input.query;
       let rows = [...(state.customersByWorkspace.get(input.workspaceId) ?? [])];
