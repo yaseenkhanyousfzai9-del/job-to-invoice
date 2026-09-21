@@ -1,4 +1,4 @@
-import type { Customer, CustomerListState, MeData } from "@job-to-invoice/domain";
+import type { Customer, CustomerListState, JobSummary, MeData } from "@job-to-invoice/domain";
 import { loadMobileConfig } from "./config";
 import { createClientUuid } from "./clientUuid";
 
@@ -7,11 +7,24 @@ export type CustomerListPage = {
   next_cursor: string | null;
 };
 
+export type JobListPage = {
+  items: JobSummary[];
+  next_cursor: string | null;
+};
+
 export type ListCustomersParams = {
   state?: CustomerListState;
   search?: string | null;
   limit?: number;
   cursor?: string | null;
+};
+
+export type ListJobsParams = {
+  customerId: string;
+  limit?: number;
+  cursor?: string | null;
+  search?: string | null;
+  state?: string;
 };
 
 export type ApiError = {
@@ -164,4 +177,37 @@ export async function listCustomers(
   params: ListCustomersParams = {},
 ): Promise<CustomerListPage> {
   return apiRequest<CustomerListPage>(buildListCustomersPath(params), { accessToken });
+}
+
+export function buildGetCustomerPath(customerId: string): string {
+  return `/v1/customers/${customerId}`;
+}
+
+export async function getCustomer(accessToken: string, customerId: string): Promise<Customer> {
+  return apiRequest<Customer>(buildGetCustomerPath(customerId), { accessToken });
+}
+
+export const JOBS_LIST_DEFAULT_LIMIT = 25;
+
+export function buildListJobsPath(params: ListJobsParams): string {
+  const query = new URLSearchParams();
+  query.set("customer_id", params.customerId);
+  query.set("limit", String(params.limit ?? JOBS_LIST_DEFAULT_LIMIT));
+  if (typeof params.cursor === "string" && params.cursor.length > 0) {
+    query.set("cursor", params.cursor);
+  }
+  if (typeof params.search === "string" && params.search.trim().length > 0) {
+    query.set("search", params.search.trim());
+  }
+  if (typeof params.state === "string" && params.state.length > 0) {
+    query.set("state", params.state);
+  }
+  return `/v1/jobs?${query.toString()}`;
+}
+
+export async function listJobs(
+  accessToken: string,
+  params: ListJobsParams,
+): Promise<JobListPage> {
+  return apiRequest<JobListPage>(buildListJobsPath(params), { accessToken });
 }

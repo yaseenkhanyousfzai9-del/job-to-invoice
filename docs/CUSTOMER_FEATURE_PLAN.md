@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, CUST-UI-01, and CUST-UI-02 are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED (list/search/create entry + detail/jobs **API**; Customer Detail UI CUST-UI-03 and archive/delete not VERIFIED). Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, CUST-UI-01, and CUST-UI-02 are VERIFIED. **CUST-UI-03** is **IMPLEMENTED / AWAITING PHYSICAL VERIFICATION**. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED (list/search/create entry + detail/jobs API; Customer Detail UI coded, physical Android pending; archive/delete not VERIFIED). Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -1100,6 +1100,10 @@ S19 detail renders server data. Archived customers are viewable from detail if r
 
 Recording of detail + empty jobs. After CUST-JOB-01, recording of associated job list.
 
+**Status (2026-09-21):** **IMPLEMENTED / AWAITING PHYSICAL VERIFICATION.** Route `/(app)/customers/[id]`; list row navigates by `customer.id` only; parallel `GET /v1/customers/{id}` + `GET /v1/jobs?customer_id=&limit=25`; archived badge; empty jobs copy; Load more; customer Retry; jobs-section Retry without discarding customer; job rows non-pressable (Jobs Detail UI deferred). Automated `customerDetail.test.ts` green. Physical Android recording still required for VERIFIED. Edit/archive/delete not in this slice.
+
+**Doc conflict note:** Feature plan allows a stub job-row navigation target until Jobs UI exists; authorized CUST-UI-03 scope excludes Jobs Detail UI, so rows are read-only summaries (real ids in a11y only, no navigation).
+
 ---
 
 ## CUST-API-04
@@ -1884,10 +1888,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). S19 remains partially VERIFIED: Detail UI (CUST-UI-03), archive/delete remain open. API prerequisites for Customer Detail UI are ready.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **IMPLEMENTED / AWAITING PHYSICAL VERIFICATION** (2026-09-21). S19 remains partially complete: physical Detail UI verification + archive/delete remain open.
 3. Jobs HTTP create (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind; list-by-customer read is CUST-API-03 VERIFIED.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start Customer Detail UI / CUST-UI-03 until authorized. CUST-API-03 API prerequisites are ready.
+Do not start Customer edit/archive/delete UI until authorized. CUST-UI-03 is implemented; physical Android verification still required.

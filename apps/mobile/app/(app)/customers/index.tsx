@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import type { CustomerListState } from "@job-to-invoice/domain";
 import {
   Body,
@@ -26,7 +26,7 @@ import {
   showCustomersInitialLoading,
   type CustomersListSnapshot,
 } from "../../../src/features/customers/customersList";
-import { CUSTOMERS_NEW_HREF } from "../../../src/features/customers/customerRoutes";
+import { CUSTOMERS_NEW_HREF, customerDetailHref } from "../../../src/features/customers/customerRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
@@ -154,6 +154,7 @@ export default function CustomersListScreen() {
         snapshot={snapshot}
         onAddCustomer={() => router.push(CUSTOMERS_NEW_HREF)}
         onLoadMore={() => void onLoadMore()}
+        onOpenCustomer={(id) => router.push(customerDetailHref(id) as Href)}
       />
     </Screen>
   );
@@ -163,6 +164,7 @@ function CustomersListBody(props: {
   snapshot: CustomersListSnapshot;
   onAddCustomer: () => void;
   onLoadMore: () => void;
+  onOpenCustomer: (customerId: string) => void;
 }) {
   const { snapshot } = props;
 
@@ -201,18 +203,24 @@ function CustomersListBody(props: {
       renderItem={({ item }) => {
         const row = presentCustomerRow(item);
         return (
-          <View
-            accessible
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={row.accessibilityLabel}
+            onPress={() => props.onOpenCustomer(row.id)}
             style={styles.row}
           >
-            <Text style={styles.rowName}>{row.name}</Text>
-            {row.email ? <Text style={styles.rowMeta}>{row.email}</Text> : null}
-            {row.phone ? <Text style={styles.rowMeta}>{row.phone}</Text> : null}
-            {row.archivedLabel ? (
-              <Text style={styles.archived}>{row.archivedLabel}</Text>
-            ) : null}
-          </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowName}>{row.name}</Text>
+              {row.email ? <Text style={styles.rowMeta}>{row.email}</Text> : null}
+              {row.phone ? <Text style={styles.rowMeta}>{row.phone}</Text> : null}
+              {row.archivedLabel ? (
+                <Text style={styles.archived}>{row.archivedLabel}</Text>
+              ) : null}
+            </View>
+            <Text style={styles.chevron} accessibilityElementsHidden>
+              ›
+            </Text>
+          </Pressable>
         );
       }}
       ListFooterComponent={
@@ -272,9 +280,15 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: layout.cornerRadius,
     padding: 12,
-    gap: 4,
+    gap: 8,
     backgroundColor: "#ffffff",
     minHeight: layout.minTouchTarget,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rowText: {
+    flex: 1,
+    gap: 4,
   },
   rowName: {
     fontSize: typography.body.fontSize,
@@ -284,6 +298,11 @@ const styles = StyleSheet.create({
   rowMeta: {
     fontSize: typography.secondary.fontSize,
     color: colors.secondary,
+  },
+  chevron: {
+    fontSize: 22,
+    color: colors.secondary,
+    paddingLeft: 8,
   },
   archived: {
     fontSize: typography.secondary.fontSize,

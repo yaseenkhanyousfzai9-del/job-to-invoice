@@ -6,7 +6,9 @@ import { test } from "node:test";
 import {
   CUSTOMERS_LIST_HREF,
   CUSTOMERS_NEW_HREF,
+  customerDetailHref,
   customersListHrefWithCreatedFlag,
+  isInvalidCustomerDetailHref,
   isInvalidCustomersListHref,
 } from "./customerRoutes";
 
@@ -28,6 +30,14 @@ test("Customers screen route file exists", () => {
 test("Add customer targets existing new route", () => {
   assert.equal(CUSTOMERS_NEW_HREF, "/(app)/customers/new");
   assert.equal(existsSync(join(appDir, "(app)", "customers", "new.tsx")), true);
+});
+
+test("Customer detail targets existing [id] route with id param only", () => {
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const href = customerDetailHref(id);
+  assert.equal(href, `/(app)/customers/${id}`);
+  assert.equal(existsSync(join(appDir, "(app)", "customers", "[id].tsx")), true);
+  assert.equal(isInvalidCustomerDetailHref(href), false);
 });
 
 test("successful Customer create returns to canonical Customers route", () => {
