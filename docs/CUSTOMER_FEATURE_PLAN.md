@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01, CUST-API-02, **CUST-API-03**, **CUST-API-04**, **CUST-API-05**, **CUST-API-06**, CUST-UI-01, CUST-UI-02, **CUST-UI-03**, **CUST-UI-04**, and **CUST-UI-05** are VERIFIED. **CUST-UI-06** is **IMPLEMENTED** (awaiting physical Android verification). Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 (list-by-customer read shipped in CUST-API-03). S19 is partially VERIFIED — **VERIFIED:** create, list/search, detail, associated jobs read-only display, edit, archive, restore, delete (API); **IMPLEMENTED (awaiting physical):** Delete Customer mobile UI; **PENDING:** Create Job. Runtime OTP mailbox remains unverified.
+Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01–**CUST-API-06**, and CUST-UI-01–**CUST-UI-06** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). `R-CUS-PRE-05` DB half is live; Jobs HTTP create remains CUST-JOB-01 / S06 (list-by-customer read shipped in CUST-API-03). **S19** (Customers tab per PRD: search/list, create, detail with jobs, archive rather than destructive delete where referenced) is **VERIFIED** (2026-09-21). Create Job is **not** an S19 item — it is **S06 / CUST-JOB-01** and remains open. Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -777,7 +777,7 @@ Device or representative runtime recording of create + duplicate warning + Unico
 
 Customer list/search/pagination
 
-**Status: VERIFIED** (2026-09-20) — `GET /v1/customers` on US development project. CUST-UI-02 is VERIFIED (physical Android). S19 remains only partially VERIFIED (archive/restore VERIFIED via CUST-API-05 + CUST-UI-05 2026-09-21; delete API VERIFIED via CUST-API-06 2026-09-21; Delete UI / Create Job still open; detail/jobs read path is VERIFIED via CUST-API-03 + CUST-UI-03).
+**Status: VERIFIED** (2026-09-20) — `GET /v1/customers` on US development project. CUST-UI-02 is VERIFIED (physical Android). S19 is VERIFIED overall as of CUST-UI-06 physical Android 2026-09-21 (detail/jobs/edit/archive/delete included). Create Job remains S06/CUST-JOB-01.
 
 ### PRD IDs
 
@@ -1482,7 +1482,7 @@ UI recording + API list proof.
 
 Delete Customer
 
-**Status: VERIFIED** (2026-09-21) — Memory `customers.delete.test.ts` + live `customers.delete.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). CUST-UI-06 (Delete Customer mobile UI) is **not** claimed.
+**Status: VERIFIED** (2026-09-21) — Memory `customers.delete.test.ts` + live `customers.delete.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). CUST-UI-06 is VERIFIED (physical Android 2026-09-21).
 
 ### PRD IDs
 
@@ -1561,7 +1561,7 @@ API + DB tests. 409 body has no cross-tenant PII.
 
 Delete behavior
 
-**Status: IMPLEMENTED / AWAITING PHYSICAL VERIFICATION** (2026-09-21) — automated `customerDelete.test.ts` + Detail wiring. Physical Android evidence required before VERIFIED.
+**Status: VERIFIED** (2026-09-21) — physical Android (Expo Go / LAN) + automated `customerDelete.test.ts`.
 
 ### PRD IDs
 
@@ -1622,7 +1622,7 @@ Consequence-labelled confirm. Focus management after dismiss.
 
 ### Tests
 
-Both paths. Rapid double-tap does not double-call without idempotency. Automated suite green 2026-09-21.
+Both paths. Rapid double-tap does not double-call without idempotency.
 
 ### Exit criteria
 
@@ -1631,6 +1631,14 @@ Owners cannot destructively delete referenced customers from UI or API.
 ### Evidence required before VERIFIED
 
 UI recordings of both paths plus 409 fixture.
+
+**PHYSICALLY VERIFIED (Android, 2026-09-21):**
+- Active unreferenced: `Android Delete Test` — confirm Delete → returned to Customers; row gone; no crash/OTP
+- Archived unreferenced: `Android Archived Delete Test` — delete while archived succeeded; no restore-first; no auth regression
+- Referenced: fixture `Android Referenced Delete Test` + job `Android Referenced Job` — Delete blocked; Customer+Job remain; stayed on Detail; conflict + Archive guidance; no auto-delete/auto-archive
+
+**AUTOMATED VERIFIED ONLY (not physically exercised this pass):**
+- network failure / Retry; Retry Idempotency-Key reuse; double-submit; 404; cache invalidation; search/filter preservation; auth transient behavior; active Archive CTA on conflict; archived conflict without redundant Archive
 
 ---
 
@@ -1974,10 +1982,10 @@ Non-critical assumptions (unchanged):
 **Still true before Customer behaviour is production-correct:**
 
 1. Live owner OTP (QA01/QA02) needs a fictional developer mailbox and the publishable key in the ignored mobile env file.
-2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). **CUST-API-06** (Delete Customer API) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-06** (Delete Customer mobile UI) is **IMPLEMENTED** (automated 2026-09-21; awaiting physical Android). S19 remains partially complete: Create Job remains open.
+2. CUST-API-01 is **VERIFIED**. CUST-UI-01 is **VERIFIED** (physical Android create form, 2026-09-20). CUST-API-02 (list/search API) is **VERIFIED** (2026-09-20). CUST-UI-02 is **VERIFIED** (physical Android Customers list/search, 2026-09-20). **R-CUS-31** jobs↔customer FK is **VERIFIED** (`0004_jobs.sql`, 2026-09-20). **CUST-API-03** (customer detail + jobs-by-customer read) is **VERIFIED** (2026-09-21). **CUST-UI-03** is **VERIFIED** (physical Android Customer Detail 2026-09-21; populated jobs/pagination/404/archived badge automated only). **CUST-API-04** (PATCH edit) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-04** is **VERIFIED** (physical Android Edit Customer 2026-09-21). **CUST-API-05** (archive/restore) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-05** is **VERIFIED** (physical Android Archive/Restore 2026-09-21). **CUST-API-06** (Delete Customer API) is **VERIFIED** (memory + live US 2026-09-21). **CUST-UI-06** (Delete Customer mobile UI) is **VERIFIED** (physical Android 2026-09-21). **S19** is **VERIFIED** for its PRD scope. Next open Customer-adjacent slice is **CUST-JOB-01** / **S06** (Create Job / picker bind), by authorization.
 3. Jobs HTTP create (`R-CUS-PRE-05` remainder / CUST-JOB-01) still required before S06 picker bind; list-by-customer read is CUST-API-03 VERIFIED.
 4. SYNC01 encrypted SQLite must be proven before CUST-SYNC-01 stores production records.
 5. CUS01 apply-to-draft and published-snapshot evidence need Quote/document slices for VERIFIED.
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
-Do not start Create Job until authorized. Next unimplemented Customer slice after CUST-UI-06 physical verify is **CUST-JOB-01** (Create Job / picker bind), by authorization.
+Do not start Create Job until authorized. Next unimplemented Customer-adjacent slice is **CUST-JOB-01** (Create Job / picker bind / S06), by authorization.
