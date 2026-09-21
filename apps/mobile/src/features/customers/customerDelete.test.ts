@@ -308,7 +308,7 @@ test("network delete failure preserves Customer and Retry reuses Idempotency-Key
 
 test("rapid double confirm → one DELETE; pending blocks duplicate", async () => {
   let calls = 0;
-  let resolveDelete: ((value: { deleted: true }) => void) | null = null;
+  let resolveDelete!: (value: { deleted: true }) => void;
   const customer = sampleCustomer();
   const controller = createCustomerDetailController(customer.id, {
     getCustomer: async () => customer,
@@ -326,7 +326,7 @@ test("rapid double confirm → one DELETE; pending blocks duplicate", async () =
   const second = await controller.confirmDelete("token");
   assert.equal(second, "blocked");
   assert.equal(controller.getSnapshot().deletePending, true);
-  resolveDelete?.({ deleted: true });
+  resolveDelete({ deleted: true });
   assert.equal(await first, "deleted");
   assert.equal(calls, 1);
   controller.dispose();
