@@ -12,6 +12,7 @@ import type { MeData } from "@job-to-invoice/domain";
 import { resolveOwnerNavigation, validateEmail, type OwnerNavigation } from "@job-to-invoice/domain";
 import { DomainApiError, fetchMe } from "../lib/api";
 import { clearCustomersListSession } from "../features/customers/customersListSession";
+import { clearJobsListSession } from "../features/jobs/jobsListSession";
 import {
   authEventTrace,
   authSignOutTrace,
@@ -462,6 +463,7 @@ export function AuthProvider(props: { children: ReactNode }) {
     setOtpInputEpoch((n) => n + 1);
     verifyAttemptGate.clearForUserCodeEdit();
     clearCustomersListSession();
+    clearJobsListSession();
   }, [latestOtpRequest, verifyAttemptGate]);
 
   const hasActiveOtpTransaction = otpGeneration > 0 && Boolean(pendingEmail);

@@ -1,4 +1,10 @@
-import type { Customer, CustomerListState, JobSummary, MeData } from "@job-to-invoice/domain";
+import type {
+  Customer,
+  CustomerListState,
+  JobListBucket,
+  JobSummary,
+  MeData,
+} from "@job-to-invoice/domain";
 import { loadMobileConfig } from "./config";
 import { createClientUuid } from "./clientUuid";
 
@@ -19,12 +25,15 @@ export type ListCustomersParams = {
   cursor?: string | null;
 };
 
+/** Customer-scoped (S19) and/or S05 general list. Never send both bucket and state. */
 export type ListJobsParams = {
-  customerId: string;
+  customerId?: string | null;
+  bucket?: JobListBucket | null;
   limit?: number;
   cursor?: string | null;
   search?: string | null;
-  state?: string;
+  /** Legacy filter for customer-scoped list only; S05 UI must use bucket. */
+  state?: string | null;
 };
 
 export type ApiError = {
@@ -252,7 +261,12 @@ export const JOBS_LIST_DEFAULT_LIMIT = 25;
 
 export function buildListJobsPath(params: ListJobsParams): string {
   const query = new URLSearchParams();
-  query.set("customer_id", params.customerId);
+  if (typeof params.customerId === "string" && params.customerId.length > 0) {
+    query.set("customer_id", params.customerId);
+  }
+  if (params.bucket === "active" || params.bucket === "finished" || params.bucket === "archived") {
+    query.set("bucket", params.bucket);
+  }
   query.set("limit", String(params.limit ?? JOBS_LIST_DEFAULT_LIMIT));
   if (typeof params.cursor === "string" && params.cursor.length > 0) {
     query.set("cursor", params.cursor);

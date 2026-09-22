@@ -1,9 +1,14 @@
 /**
- * Canonical Expo Router paths for Create Job (S06).
+ * Canonical Expo Router paths for Jobs screens (S05 list + S06 create).
+ * File `app/(app)/jobs/index.tsx` maps to `/(app)/jobs` — never `/jobs/index`.
  * File `app/(app)/jobs/new.tsx` maps to `/(app)/jobs/new` — never `/jobs/new/index`.
+ * S08 Job Detail is not implemented — do not invent `/jobs/[id]`.
  */
+export const JOBS_LIST_HREF = "/(app)/jobs" as const;
 export const CREATE_JOB_HREF = "/(app)/jobs/new" as const;
 
+/** FlatList must deliver filter / New job / Load more presses while search keyboard is open. */
+export const JOBS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;
 export const CREATE_JOB_KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;
 
 export type CreateJobHref = {
@@ -46,6 +51,28 @@ export function customersNewHrefForCreateJob(): {
   };
 }
 
+export function isInvalidJobsListHref(href: string): boolean {
+  return href.includes("/jobs/index") || href.includes("/(app)/jobs/index");
+}
+
 export function isInvalidCreateJobHref(href: string): boolean {
   return href.includes("/jobs/new/index") || href.includes("/(app)/jobs/new/index");
+}
+
+export function isInvalidJobDetailHref(href: string): boolean {
+  return (
+    /\/jobs\/[0-9a-f-]{36}/i.test(href) ||
+    href.includes("/jobs/[id]") ||
+    href.includes("/(app)/jobs/[id]")
+  );
+}
+
+/** Owner shell → Jobs list. */
+export function pushJobsList(push: (href: typeof JOBS_LIST_HREF) => void): void {
+  push(JOBS_LIST_HREF);
+}
+
+/** Jobs list → Create Job (S06). */
+export function pushCreateJob(push: (href: typeof CREATE_JOB_HREF) => void): void {
+  push(CREATE_JOB_HREF);
 }
