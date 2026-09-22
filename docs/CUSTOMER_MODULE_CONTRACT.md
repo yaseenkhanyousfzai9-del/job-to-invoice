@@ -229,8 +229,81 @@ The following contracts are **stable for integration** unless a documented PRD d
 - Archive contract (`POST …/archive` + `{ archived }`)
 - Delete conflict (`CUSTOMER_REFERENCED`)
 - `customer_id` Job relation (composite FK)
+- **Customer API error contract** (status codes, error codes, details shapes, idempotency)
 
 Future teams must consume these contracts instead of creating a second Customer model or bypassing Fastify via Supabase REST for commercial Customer writes.
+
+---
+
+## Customer API Error Contract
+
+Frozen public error shapes for Customer routes. Do **not** invent new Customer error codes without a PRD change. Authority also: `docs/API.md`.
+
+### Inventory (implemented)
+
+| Code | Typical HTTP | Customer use |
+|---|---|---|
+| `UNAUTHENTICATED` | 401 | Missing/invalid Bearer on any Customer route |
+| `VALIDATION_FAILED` | 422 | Invalid body, missing/malformed Idempotency-Key or If-Match, invalid list `state`/`limit`/`cursor` |
+| `NOT_FOUND` | 404 | Unknown or cross-workspace Customer id (generic; identical shape) |
+| `DUPLICATE_CUSTOMER_EMAIL` | 409 | Same-workspace normalized email collision without `confirm_duplicate_email` |
+| `VERSION_CONFLICT` | 409 | Stale PATCH If-Match; `details.server` = current **public** Customer |
+| `IDEMPOTENCY_MISMATCH` | 409 | Same Idempotency-Key, different logical request |
+| `CUSTOMER_REFERENCED` | 409 | DELETE while Jobs reference the Customer |
+| `WORKSPACE_REQUIRED` | 409 | Owner has no workspace (create path) |
+
+Job create may also return `CUSTOMER_ARCHIVED` (422) — that is a **Job** create error, not a Customer CRUD public error.
+
+### Idempotency-Key required
+
+| Endpoint | Idempotency-Key | If-Match |
+|---|---|---|
+| `POST /v1/customers` | Required | No |
+| `PATCH /v1/customers/{id}` | Required | Required (numeric version) |
+| `POST /v1/customers/{id}/archive` | Required | **Not** required |
+| `DELETE /v1/customers/{id}` | Required | **Not** required |
+| `GET /v1/customers` | No | No |
+| `GET /v1/customers/{id}` | No | No |
+
+Replay rules: same key + same logical request → stored response (no second insert / no second version bump / delete success replay stays `{ deleted: true }`, not 404). Same key + different request → `IDEMPOTENCY_MISMATCH`.
+
+### Matrix
+
+| Endpoint | Scenario | HTTP | Error code | Retry safe? | User action | Idempotency notes |
+|---|---|---|---|---|---|---|
+| `POST /v1/customers` | Unauthenticated | 401 | `UNAUTHENTICATED` | No (fix auth) | Sign in | n/a |
+| `POST /v1/customers` | Invalid body / ownership fields | 422 | `VALIDATION_FAILED` | No | Fix fields | Failed validation may or may not store key; do not assume create |
+| `POST /v1/customers` | Duplicate email, no confirm | 409 | `DUPLICATE_CUSTOMER_EMAIL` | No | Confirm in UI → **new** key + `confirm_duplicate_email: true` | 409 stored; replay returns same warning |
+| `POST /v1/customers` | Same key, different body | 409 | `IDEMPOTENCY_MISMATCH` | No | New key | — |
+| `GET /v1/customers` | Unauthenticated | 401 | `UNAUTHENTICATED` | No | Sign in | — |
+| `GET /v1/customers` | Invalid `state` / `limit` / `cursor` | 422 | `VALIDATION_FAILED` | No | Fix query | — |
+| `GET /v1/customers/{id}` | Unknown UUID | 404 | `NOT_FOUND` | No | Stop / pick another | Identical to cross-tenant |
+| `GET /v1/customers/{id}` | Cross-workspace UUID | 404 | `NOT_FOUND` | No | Stop | No existence oracle |
+| `PATCH /v1/customers/{id}` | Missing If-Match | 422 | `VALIDATION_FAILED` | No | Send current version | — |
+| `PATCH /v1/customers/{id}` | Malformed If-Match | 422 | `VALIDATION_FAILED` | No | Send integer version | — |
+| `PATCH /v1/customers/{id}` | Stale If-Match | 409 | `VERSION_CONFLICT` | No | Reload `details.server`; explicit retry | No silent last-write-wins; row unchanged |
+| `PATCH /v1/customers/{id}` | Duplicate email (other row) | 409 | `DUPLICATE_CUSTOMER_EMAIL` | No | Confirm + new key | Self-email does not conflict |
+| `PATCH /v1/customers/{id}` | Same key, different body | 409 | `IDEMPOTENCY_MISMATCH` | No | New key | Success replay does not bump version again |
+| `PATCH /v1/customers/{id}` | Unknown / cross-tenant | 404 | `NOT_FOUND` | No | Stop | Generic |
+| `POST …/archive` | Unauthenticated | 401 | `UNAUTHENTICATED` | No | Sign in | — |
+| `POST …/archive` | Unknown / cross-tenant | 404 | `NOT_FOUND` | No | Stop | Generic |
+| `POST …/archive` | Same key, different body | 409 | `IDEMPOTENCY_MISMATCH` | No | New key | Desired-state no-op is success, not mismatch |
+| `DELETE /v1/customers/{id}` | Unauthenticated | 401 | `UNAUTHENTICATED` | No | Sign in | — |
+| `DELETE /v1/customers/{id}` | Referenced by Job(s) | 409 | `CUSTOMER_REFERENCED` | No | Archive instead | No auto-archive; no Job ids / FK text |
+| `DELETE /v1/customers/{id}` | Unknown / cross-tenant | 404 | `NOT_FOUND` | No | Stop | Never `CUSTOMER_REFERENCED` for foreign |
+| `DELETE /v1/customers/{id}` | Same key, different request | 409 | `IDEMPOTENCY_MISMATCH` | No | New key | Success + referenced 409 are replayable |
+
+### Privacy / leak rules
+
+Generic 404 responses for detail / PATCH / archive / DELETE must be externally indistinguishable for unknown vs cross-workspace ids (same status, code, message; no `details` that reveal workspace, archive state, version, or Jobs).
+
+Error payloads must not expose: `workspace_id`, `normalized_email`, `created_by`, raw Postgres codes (`23503`), FK/constraint names, or lists of Job ids on `CUSTOMER_REFERENCED`.
+
+`VERSION_CONFLICT.details.server` and `DUPLICATE_CUSTOMER_EMAIL.details.duplicates` are the only intentional Customer-related detail payloads; both use public-safe fields only (`duplicates`: `{ id, name }[]`).
+
+### Transient client UX (mobile)
+
+Customer create / edit / list / detail / archive / delete network or 5xx paths must stay signed in, show Retry where appropriate, preserve form/list state, and must not trigger OTP/verify or destroy the session. Covered by existing mobile Customer tests under `npm run test:customer -w @job-to-invoice/mobile`.
 
 ---
 
@@ -240,7 +313,7 @@ Deterministic Customer-only regression for Team B / final integration. Does **no
 
 ### Commands
 
-Primary (memory API lifecycle + mobile S07/S19):
+Primary (memory API lifecycle + **error contract** + mobile S07/S19):
 
 ```bash
 npm run verify:customer
@@ -248,7 +321,7 @@ npm run verify:customer
 
 Composes:
 
-1. `npm run test:customer-release-gate -w @job-to-invoice/api` → `customers.release-gate.test.ts`
+1. `npm run test:customer-release-gate -w @job-to-invoice/api` → `customers.release-gate.test.ts` + `customers.error-contract.test.ts`
 2. `npm run test:customer -w @job-to-invoice/mobile` → existing S07/S19 mobile regression
 
 Optional live Development US smoke (requires `DATABASE_URL_API` for project `vlpjaamdjtmtqtpwbhzq`; skips otherwise):
@@ -257,7 +330,9 @@ Optional live Development US smoke (requires `DATABASE_URL_API` for project `vlp
 npm run test:customer-release-gate:live -w @job-to-invoice/api
 ```
 
-Broader Customer API memory suite (security + per-route suites + contract + release gate):
+Runs lifecycle smoke + error-contract live smoke (duplicate / VERSION_CONFLICT / CUSTOMER_REFERENCED / cross-tenant 404).
+
+Broader Customer API memory suite (security + per-route suites + contract + release gate + error contract):
 
 ```bash
 npm run test:customer -w @job-to-invoice/api
@@ -267,8 +342,9 @@ npm run test:customer -w @job-to-invoice/api
 
 - `verify:customer` exits **0**
 - Memory release gate covers create → detail → Active list → duplicate warn/confirm → edit / version conflict → archive / restore → Job FK → referenced delete 409 → unreferenced delete → deleted 404 → cross-tenant read/mutation 404 → cross-workspace Job bind reject → public DTO without `workspace_id` / `normalized_email` / `created_by`
+- Memory **error contract** locks the matrix above (401/422/409/404 codes, generic 404 privacy, no DB/internal leaks)
 - Mobile suite covers S07 create/validation/duplicate and S19 list/search/detail/edit/archive/restore/delete/referenced-delete/network/retry/state preservation
-- Live smoke (when env present): create / detail / edit / archive / restore / delete with disposable fixtures cleaned afterward
+- Live smoke (when env present): lifecycle CRUD smoke + error conflicts with disposable fixtures cleaned afterward
 
 ### Known infrastructure flake
 
