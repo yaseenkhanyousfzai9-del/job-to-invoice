@@ -133,6 +133,37 @@ export function PrimaryButton(props: {
   );
 }
 
+/** Destructive Customer Delete — label communicates action; fill is not the sole signal. */
+export function DestructiveButton(props: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  accessibilityHint?: string;
+}) {
+  const disabled = props.disabled || props.loading;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={props.label}
+      accessibilityHint={props.accessibilityHint ?? "Destructive action. Requires confirmation."}
+      accessibilityState={{ disabled, busy: Boolean(props.loading) }}
+      onPress={props.onPress}
+      disabled={disabled}
+      style={[styles.destructiveButton, disabled ? styles.buttonDisabled : null]}
+    >
+      {props.loading ? (
+        <View style={styles.buttonLoading}>
+          <ActivityIndicator color="#ffffff" />
+          <Text style={styles.buttonLabel}>{props.label}</Text>
+        </View>
+      ) : (
+        <Text style={styles.buttonLabel}>{props.label}</Text>
+      )}
+    </Pressable>
+  );
+}
+
 export function TextLink(props: { label: string; onPress: () => void }) {
   return (
     <Pressable
@@ -214,6 +245,13 @@ const styles = StyleSheet.create({
     minHeight: layout.buttonMinHeight,
     borderRadius: layout.cornerRadius,
     backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  destructiveButton: {
+    minHeight: layout.buttonMinHeight,
+    borderRadius: layout.cornerRadius,
+    backgroundColor: colors.danger,
     alignItems: "center",
     justifyContent: "center",
   },

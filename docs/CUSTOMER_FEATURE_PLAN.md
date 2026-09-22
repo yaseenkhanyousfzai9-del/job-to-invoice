@@ -1,6 +1,6 @@
 # Customer Feature Plan
 
-Status: CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01–**CUST-API-06**, and CUST-UI-01–**CUST-UI-06** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). **Create Job API** (`POST /v1/jobs`, CUST-JOB-01 server half) is **VERIFIED** (memory + live US 2026-09-21). **S06 / Create Job + Customer picker UI** (CUST-JOB-01 mobile) is **VERIFIED** (physical Android 2026-09-22). List-by-customer read shipped in CUST-API-03. **S19** is **VERIFIED** (2026-09-21). Runtime OTP mailbox remains unverified.
+Status: **Customer Module = COMPLETE / FROZEN / INTEGRATION-READY** (Team A). **S07 Customer Form = VERIFIED**. **S19 Customers = VERIFIED**. Contract: `docs/CUSTOMER_MODULE_CONTRACT.md`. Overlap (Auth / S05 / S06): `docs/TEAM_A_OVERLAP_NOTES.md` — **DO NOT EXTEND**. CUST-FOUNDATION-01, CUST-AUTH-01, and CUST-DOMAIN-01 are IMPLEMENTED, not VERIFIED. CUST-DB-01, CUST-API-01–**CUST-API-06**, and CUST-UI-01–**CUST-UI-06** are VERIFIED. Jobs table + composite customer FK (`R-CUS-31`) is VERIFIED (`0004_jobs.sql`, 2026-09-20). **Create Job API** / **S06** / **S05 Jobs-list API** remain platform overlap (not Customer ownership). Runtime OTP mailbox remains unverified.
 
 Authority: `docs/PRD.md`. Process: `docs/SOP.md` and `ENGINEERING_CONTRACT.md`. Architecture/data/API: `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`. Recorded resolutions: `docs/DECISIONS.md`. Status: `docs/REQUIREMENTS_MATRIX.md`.
 
@@ -2011,3 +2011,5 @@ Non-critical assumptions (unchanged):
 6. CUS02 export offer needs Settings EXP01 for a truthful export path; Archive is sufficient for referenced-delete UX until then.
 
 Next Job UI after S05 list implementation: **physical S05 Jobs list verification**, then **S08 Job overview** (deferred). Do not implement S08 automatically.
+
+**Customer Module status (Team A):** **COMPLETE / FROZEN / INTEGRATION-READY**. S07 and S19 are VERIFIED. Consume via `docs/CUSTOMER_MODULE_CONTRACT.md`. Auth / S05 / S06 overlap is **DO NOT EXTEND** — see `docs/TEAM_A_OVERLAP_NOTES.md`. Do not claim Jobs/Quotes/Invoices as Team A Customer ownership.

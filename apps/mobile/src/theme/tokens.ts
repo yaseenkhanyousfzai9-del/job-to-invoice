@@ -4,6 +4,9 @@ export const colors = {
   text: "#17212B",
   secondary: "#52606D",
   border: "#D5DCE3",
+  /** Destructive actions (Customer Delete). Text + fill — not color-only. */
+  danger: "#8B1E1E",
+  dangerSurface: "#FFF8F7",
 } as const;
 
 export const spacing = {

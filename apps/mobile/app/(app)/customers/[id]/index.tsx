@@ -9,6 +9,7 @@ import {
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   Body,
+  DestructiveButton,
   ErrorBanner,
   PrimaryButton,
   Screen,
@@ -334,7 +335,7 @@ function CustomerDetailBody(props: {
       />
 
       {!snapshot.deleteConfirmOpen ? (
-        <PrimaryButton
+        <DestructiveButton
           label={deletePending ? DELETING_LABEL : DELETE_ACTION_LABEL}
           onPress={props.onOpenDeleteConfirm}
           loading={deletePending}
@@ -348,11 +349,12 @@ function CustomerDetailBody(props: {
             {DELETE_CONFIRM_TITLE}
           </Text>
           <Text style={styles.confirmBody}>{DELETE_CONFIRM_BODY}</Text>
-          <PrimaryButton
+          <DestructiveButton
             label={deletePending ? DELETING_LABEL : DELETE_CONFIRM_ACTION}
             onPress={props.onConfirmDelete}
             loading={deletePending}
             disabled={pending}
+            accessibilityHint="Permanently deletes this customer if unreferenced."
           />
           <TextLink
             label={DELETE_CANCEL_ACTION}
@@ -485,11 +487,11 @@ const styles = StyleSheet.create({
   },
   deleteConfirmCard: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.danger,
     borderRadius: layout.cornerRadius,
     padding: 12,
     gap: 8,
-    backgroundColor: "#fff8f7",
+    backgroundColor: colors.dangerSurface,
   },
   conflictCard: {
     borderWidth: 1,
