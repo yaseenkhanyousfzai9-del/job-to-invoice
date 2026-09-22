@@ -1,0 +1,14 @@
+{
+  "name": "@job-to-invoice/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "tsx --test src/index.test.ts src/customer.test.ts src/customer-list-cursor.test.ts src/job.test.ts"
+  }
+}

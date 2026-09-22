@@ -112,3 +112,122 @@ Date format: ISO date. Status values: ACCEPTED.
 **Reversible:** No without a PRD change to auto-merge drafts.  
 **Migration/API implication:** No Customer trigger on `document_drafts`. Quote feature adds the apply command later.  
 **Status:** ACCEPTED
+
+---
+
+## DEC-FOUND-001
+
+**ID:** DEC-FOUND-001  
+**Date:** 2026-09-17  
+**Question:** Which package manager should the monorepo use?  
+**Decision:** npm workspaces. Root `package.json` is private with `workspaces: ["apps/*", "packages/*"]`. Do not introduce pnpm, yarn, or bun unless a later numbered decision records a migration that preserves installs and CI.  
+**PRD evidence:** ARC01 TypeScript monorepo; ARC05 pin lockfile. The PRD does not require a specific Node package manager.  
+**Reason:** No package manager was previously recorded. npm is the default Node toolchain and matches `package-lock.json`.  
+**Requirements affected:** CUST-FOUNDATION-01, DEL01, ARC05  
+**Reversible:** Yes, with lockfile and CI changes.  
+**Migration/API implication:** Commit `package-lock.json`. All installs use `npm install`.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-001
+
+**ID:** DEC-AUTH-001  
+**Date:** 2026-09-18  
+**Question:** How does the API cryptographically verify Supabase owner access tokens?  
+**Decision:** Use `jose` with a remote JWKS. Configure `AUTH_ISSUER`, `AUTH_AUDIENCE` (Supabase default `authenticated`), and `AUTH_JWKS_URL` (or derive JWKS from `AUTH_ISSUER` / `AUTH_PROJECT_URL`). Verify signature, issuer, audience, and expiry. Map `sub` to `app_users.auth_user_id`. Do not decode tokens without verification. Do not put the JWT secret or JWKS in the mobile app. Automated tests inject a local RS256 key pair.  
+**PRD evidence:** ACC02, AUTHZ01, SREF06, ARC02.  
+**Reason:** Current Supabase Auth access tokens are JWKS-verifiable. HS256 shared secrets are not required for this slice and would expand the secret surface.  
+**Requirements affected:** ACC02, AUTHZ01, CUST-AUTH-01, R-CUS-PRE-04  
+**Reversible:** Yes, if a later provider change requires a different supported verification API, with a new decision.  
+**Migration/API implication:** Server-only env vars. No schema change.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-002
+
+**ID:** DEC-AUTH-002  
+**Date:** 2026-09-18  
+**Question:** How are auth/workspace tests run without a live Postgres or Supabase project?  
+**Decision:** API integration tests use an in-memory store that enforces the same uniqueness rules (one workspace per owner, idempotency replay/mismatch). Development may use that store only when `DATABASE_URL_API` is unset. Staging/production require `DATABASE_URL_API`. Live OTP, JWKS against a real project, and applied RLS are not claimed VERIFIED until a development Supabase project is configured.  
+**PRD evidence:** ACC01 must use Supabase Auth, not a custom OTP store. OPS01 separate environments.  
+**Reason:** Foundation tests must not require production credentials. Faking a successful OTP is forbidden.  
+**Requirements affected:** QA01, QA02, CUST-AUTH-01  
+**Reversible:** Yes once a durable test database is available.  
+**Migration/API implication:** `0001_auth_workspace.sql` remains the production schema source.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-003
+
+**ID:** DEC-AUTH-003  
+**Date:** 2026-09-18  
+**Question:** How is the development Supabase/Postgres environment created, and how does the runtime API connect?  
+**Decision:** The account owner creates a hosted project named **Job to Invoice — Development**. Agents do not auto-provision it (organization, database password, and billing are required). The repository pins Supabase CLI `2.117.0`. Schema apply uses `npx supabase db push` against the linked development project only (`npm run db:push:dev` refuses non-development `APP_ENV`). Runtime `DATABASE_URL_API` uses `app_api_login` (LOGIN, INHERIT, NOSUPERUSER, NOBYPASSRLS) which inherits `app_api`. The password is set with `ALTER ROLE` after apply and is never committed. `DATABASE_URL_MIGRATIONS` remains the migration role. JWT verification stays JWKS (`AUTH_ISSUER`, `AUTH_AUDIENCE=authenticated`, `AUTH_JWKS_URL`).  
+**PRD evidence:** OPS01 separate environments; ARC02 restricted API role; ACC02 JWKS; PRD configuration table `DATABASE_URL_API` vs `DATABASE_URL_MIGRATIONS`.  
+**Reason:** Creating a cloud project is an account-owner action. A NOLOGIN group role cannot be a connection string user.  
+**Requirements affected:** ACC01, ACC02, AUTHZ01, DB04, OPS01, SUPABASE-DEV-SETUP-01  
+**Reversible:** Yes for CLI patch versions; not for mixing development and production projects.  
+**Migration/API implication:** `0002_app_api_login.sql`. Hosted migration role cannot `ALTER ROLE ... NOSUPERUSER` after create; attributes are set only in `CREATE ROLE`. Password remains out of band. No Customer tables.  
+**Evidence (SUPABASE-DEV-RUNTIME-ROLE-03, 2026-09-18):** Live `DATABASE_URL_API` session-pooler connection as `app_api_login` on `vlpjaamdjtmtqtpwbhzq`; `dev-db.security.test.ts` passed (no superuser/BYPASSRLS, FORCE RLS, no-context denial, own/cross-tenant membership isolation, transaction-local GUC, pooled non-leak, JWKS). OTP mailbox still unverified.  
+**Evidence (CUST-DB-01, 2026-09-18):** `0003_customers.sql` applied; `customers.security.test.ts` passed under `app_api_login`. Jobs FK intentionally deferred to a later slice.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-AUTH-004
+
+**ID:** DEC-AUTH-004  
+**Date:** 2026-09-18  
+**Question:** Which ACC01 OTP rules does hosted Supabase Auth actually configure?  
+**Decision:** Six-digit email OTP is the provider default (`otp_length = 6` in local `config.toml`). Set hosted **Email OTP expiration** to **600 seconds**; the hosted default is 3600 seconds and is not ACC01. Per-user resend cooldown defaults to about 60 seconds. **At most five verification failures per challenge is not a hosted per-challenge control.** Hosted `/auth/v1/verify` is IP rate-limited (documented 360/hour with burst). The mobile app keeps generic verify errors and a 60-second client cooldown. Do not add a second plaintext OTP table to count failures. Development email uses the project's development mailer, not production Resend.  
+**PRD evidence:** ACC01; QA02 generic errors and no account enumeration.  
+**Reason:** Documenting provider limits prevents pretending a dashboard setting exists.  
+**Requirements affected:** ACC01, QA01, QA02, SUPABASE-DEV-SETUP-01  
+**Reversible:** Yes if the provider later exposes a per-challenge failure cap.  
+**Migration/API implication:** Dashboard Auth setting only; no schema.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-CUST-008
+
+**ID:** DEC-CUST-008  
+**Date:** 2026-09-18  
+**Question:** What is the exact Customer `normalized_email` algorithm?  
+**Decision:** Trim outer whitespace. Split on the last `@`. Unicode-case-fold the local part and the domain with `toLowerCase`. Concatenate as `local@domain`. Do **not** remove Gmail dots, strip plus-tags, or apply any other provider-specific alias rewriting. The stored `email` is the trimmed original presentation. `normalized_email` is null iff `email` is null. Duplicate detection later compares `normalized_email` inside a workspace and is not a uniqueness constraint (DEC-CUST-002).  
+**PRD evidence:** VAL01 “normalized for lookup without provider-specific dot/plus rewriting; preserve original presentation.”  
+**Reason:** Lowercasing the domain (and local part for consistent comparison) is conservative lookup behavior. Removing dots or plus-tags would collapse distinct mailboxes.  
+**Requirements affected:** VAL01, CUS01, CUST-DOMAIN-01, R-CUS-23  
+**Reversible:** Yes for additional Unicode case-folding details; not for the no-Gmail-rewrite rule.  
+**Migration/API implication:** `customers.normalized_email` stores this lookup form only.  
+**Status:** ACCEPTED
+
+---
+
+## DEC-JOB-001
+
+**ID:** DEC-JOB-001  
+**Date:** 2026-09-22  
+**Question:** How do S05 Jobs-tab Active / Finished / Archived filters map onto JOB01 lifecycles, and how does general `GET /v1/jobs` coexist with customer-scoped listing?  
+**Decision:**
+- Introduce explicit `bucket=active|finished|archived` for the S05 Jobs tab. Buckets are mutually exclusive:
+  - **Active** = `lifecycle IN ('draft','active','invoiced')`
+  - **Finished** = `lifecycle IN ('finished','canceled')`
+  - **Archived** = `lifecycle = 'archived'`
+- When `customer_id` is omitted, general workspace list defaults to **Active** (`bucket=active`).
+- When `customer_id` is supplied, preserve CUST-API-03 behaviour: customer must be same-workspace or generic 404; default remains legacy `state=all` when neither `bucket` nor `state` is supplied.
+- Keep legacy `state` (`all` | `active` (= not archived) | `archived` | specific lifecycle) for backward compatibility. Supplying both `bucket` and `state` → 422 ambiguous query.
+- S05 search: case-insensitive partial match on **Job title** and **Customer name** only (not site, UUID, email, phone, or internal notes).
+- Job card DTO extends JobSummary with `customer: { id, name }` via a workspace-safe join (no N+1). No site summary in this slice. Do not expose workspace_id, created_by, emails, phones, internal_notes, or entitlement fields.
+- Ordering `(updated_at, id) DESC`; opaque cursor bound to `customer_id`, `bucket`/`state`, and `search`; limit default 25 / max 100.
+- Archived visibility uses `lifecycle='archived'` only; `archived_from_state` is not the S05 bucket selector.
+
+**PRD evidence:** S05 Active/Finished/Archived filters; JOB01 lifecycles; GET /jobs search/state/archive/page; DEC-CUST-006 customer_id filter; API02 list conventions.  
+**Reason:** Legacy `state=active` (not archived) would place Finished jobs in the Active tab. Explicit buckets keep tabs exclusive and keep canceled jobs visible under Finished.  
+**Requirements affected:** S05, GET /v1/jobs, JOB01, DEC-CUST-006, CUST-API-03  
+**Reversible:** Yes for search/card field expansion; not for inventing overlapping Active/Finished membership.  
+**Migration/API implication:** Additive query `bucket`; optional `customer_id`; additive response `customer` summary. No schema change.  
+**Status:** ACCEPTED

@@ -1,7 +1,14 @@
 ﻿node_modules/
 .env
 .env.*
+.env.development.local
+**/.env.development.local
 !.env.example
+!**/.env.example
+
+# Supabase CLI local state (never commit linked project tokens)
+supabase/.temp/
+supabase/.branches/
 
 .expo/
 .next/
@@ -10,6 +17,11 @@ build/
 coverage/
 
 *.log
+
+# Temporary local auth OTP probe (never commit)
+scripts/tmp-auth-otp-probe.mjs
+**/tmp-auth-otp-probe.*
+scripts/.tmp-auth-otp-probe-*
 
 .DS_Store
 Thumbs.db
@@ -21,3 +33,9 @@ Thumbs.db
 *.key
 *.p12
 *.mobileprovision
+
+*.tsbuildinfo
+.turbo/
+.vercel/
+apps/mobile/ios/
+apps/mobile/android/

@@ -1,6 +1,6 @@
 # API
 
-Status: specification. No Fastify routes have been implemented yet.
+Status: CUST-AUTH-01 implements `GET /v1/me` and `POST /v1/workspace` with Bearer JWT verification. Customer and Jobs routes are not implemented.
 
 Authority: PRD sections 21–22 (API01–API03, endpoint inventory). Additive Customer Detail read: DEC-CUST-001. Duplicate-email protocol: DEC-CUST-002. Jobs filter: DEC-CUST-006.
 
@@ -199,7 +199,7 @@ Additive read required by S19. PRD inventory is a minimum contract, not a ceilin
 
 **Errors.** 401; 404 generic; 422 only for malformed path if distinguished without leaking tenant validity — prefer 404 for any well-formed UUID that is not in this workspace.
 
-**Tests.** QA03; archived customer still readable; no jobs array in payload.
+**Tests.** QA03; archived customer still readable; no jobs array in payload. **Evidence (CUST-API-03, 2026-09-21):** `customers.detail.test.ts` + live `customers.detail.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`).
 
 Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is not in-workspace, the jobs call also 404s.
 
@@ -221,7 +221,6 @@ Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is no
 
 ```json
 {
-  "id": "uuid (optional client id)",
   "name": "string",
   "email": "string | null",
   "phone": "string | null",
@@ -232,25 +231,27 @@ Associated jobs: `GET /v1/jobs?customer_id={id}` (below). If that customer is no
 
 `confirm_duplicate_email` defaults false if omitted.
 
-**Duplicate email (DEC-CUST-002, CUS01).** If `email` is present and another customer in **this** workspace has the same `normalized_email`, and `confirm_duplicate_email` is not true:
+Client must not send `id`, `workspace_id`, `normalized_email`, `archived_at`, `version`, `created_at`, `updated_at`, or `created_by`. Unknown or ownership fields → 422 `VALIDATION_FAILED`.
+
+**Duplicate email (DEC-CUST-002, CUS01).** If `email` is present and another customer in **this** workspace has the same `normalized_email` (including archived rows), and `confirm_duplicate_email` is not true:
 
 - HTTP 409
 - `error.code`: `DUPLICATE_CUSTOMER_EMAIL`
 - `retryable`: false
-- Safe same-workspace metadata only, e.g. `{ "duplicates": [{ "id": "uuid", "name": "string" }] }`
+- Safe same-workspace metadata only, e.g. `{ "duplicates": [{ "id": "uuid", "name": "string" }] }` under `error.details`
 - No emails, no other-workspace ids, no existence of other tenants
 
-After the owner confirms in UI, client retries with a **new** Idempotency-Key and `confirm_duplicate_email: true`. Server rechecks: if duplicates still exist, insert the additional row; if the email is now unique, insert normally. Identical names never require this flag.
+The 409 response is stored under the request's Idempotency-Key so replay returns the same warning and does not create a row. After the owner confirms in UI, client retries with a **new** Idempotency-Key and `confirm_duplicate_email: true`. Server rechecks, then inserts. Identical names never require this flag.
 
 Empty email: no duplicate check.
 
 **Invalid phone (DEC-CUST-003).** Optional. If supplied and not parsable to E.164 without guessing country → 422 `VALIDATION_FAILED` on `phone`. No raw-phone persist.
 
-**Response `data`.** Customer resource, `version` 1.
+**Success.** HTTP `201 Created`. Response `data` is the Customer resource (`id`, `name`, `email`, `phone`, `billing_address`, `archived_at`, `version`, `created_at`, `updated_at`). `version` is 1. `archived_at` is null. Server-derived `workspace_id`, `normalized_email`, and `created_by` are not returned on the resource.
 
-**Errors.** 401; 422 validation; 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`; 429.
+**Errors.** 401 `UNAUTHENTICATED`; 422 `VALIDATION_FAILED`; 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`; 409 `WORKSPACE_REQUIRED` when the owner has no workspace; 429.
 
-**Tests.** Unicode name; same name twice; duplicate email without confirm → 409; with confirm + new key → two rows; invalid phone 422; invalid ZIP 422; extra field 422; replay; body `workspace_id` rejected; unauthenticated 401.
+**Tests.** Unicode name; same name twice; duplicate email without confirm → 409; with confirm + new key → two rows; archived same-email still warns; cross-workspace same email does not warn; invalid phone 422; invalid ZIP 422; ownership fields 422; replay; unauthenticated 401; live DB persistence under `app_api_login`.
 
 ---
 
@@ -280,11 +281,13 @@ Empty email: no duplicate check.
 
 Cannot set `archived_at` here. Duplicate-email protocol applies when the new normalized email collides with a **different** customer in the same workspace.
 
-**Response `data`.** Updated Customer, incremented `version`.
+**Response `data`.** Updated Customer, incremented `version`. Successful updates always increment `version` (including same-value contact patches). Clearing optional fields is supported with explicit `null` for `email`, `phone`, and `billing_address`. Archived customers remain editable (contact fields only; `archived_at` is not mutable here).
 
-**Errors.** 401; 404 generic; 422; 409 `VERSION_CONFLICT` (stale If-Match); 409 `DUPLICATE_CUSTOMER_EMAIL`; 409 `IDEMPOTENCY_MISMATCH`.
+**Errors.** 401; 404 generic; 422 (including missing/malformed If-Match or Idempotency-Key); 409 `VERSION_CONFLICT` (stale If-Match; `error.details.server` is the current public Customer); 409 `DUPLICATE_CUSTOMER_EMAIL` (same protocol as create; self excluded); 409 `IDEMPOTENCY_MISMATCH`.
 
-**Tests.** 1→2 version; missing If-Match 422; stale If-Match 409 and no write; PATCH does not change any snapshot table (even if empty); cross-tenant 404.
+**Idempotency.** Replay of the same key + same body + same If-Match returns the stored success without a second version increment (even when the original If-Match is now stale relative to the live row).
+
+**Tests.** 1→2 version; missing If-Match 422; stale If-Match 409 and no write; PATCH does not change any snapshot table (even if empty / not yet created); cross-tenant 404; live US development verification 2026-09-21.
 
 ---
 
@@ -308,6 +311,8 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 **Tests.** Archive hides from default list; restore; jobs remain; cross-tenant 404; name/email unchanged.
 
+**Evidence (CUST-API-05, 2026-09-21):** Memory `customers.archive.test.ts` + live `customers.archive.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Restore is the same route with `{ archived: false }` (no separate `/restore`). If-Match not required (DEC-CUST-005). Desired state already current → 200, no version bump / no `archived_at` rewrite. State change → version N→N+1. Idempotent replay returns stored response without a second write. Customer-with-jobs archive/restore preserves jobs. Unknown/cross-tenant identical generic 404.
+
 ---
 
 ## DELETE /v1/customers/{id}
@@ -324,11 +329,15 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 **Request.** Empty body.
 
-**Unreferenced.** Delete row. 200 with `{ "data": { "deleted": true } }` or 204 consistent in OpenAPI — pick one at implementation and test it. Prefer 200 envelope for API02 consistency.
+**Unreferenced.** Delete row. **200** with `{ "data": { "deleted": true } }` (API02 envelope). Chosen over 204 for consistency with other owner commands.
 
-**Referenced** (any `jobs` row with this `customer_id` in this workspace). 409 `CUSTOMER_REFERENCED`. Row remains. `field_errors` / message instructs Archive. Do not invent a customer-scoped export (DEC-CUST-004).
+**Referenced** (any `jobs` row with this `customer_id` in this workspace). 409 `CUSTOMER_REFERENCED`. Row remains. Message instructs Archive. Do not invent a customer-scoped export (DEC-CUST-004). No auto-archive on failed delete. Active or archived unreferenced customers may be deleted (no archive-first prerequisite). If-Match is **not** required.
 
-**Errors.** 401; 404; 409 `CUSTOMER_REFERENCED`; 409 `IDEMPOTENCY_MISMATCH`.
+**Errors.** 401; 404; 422 (missing/malformed Idempotency-Key or non-empty body); 409 `CUSTOMER_REFERENCED`; 409 `IDEMPOTENCY_MISMATCH`.
+
+**Idempotency.** Required. Empty-body hash. Success (200) and referenced conflict (409) are stored and replayed. Replay of a successful delete returns the stored 200 `{deleted:true}` (does not become 404). Cross-tenant / unknown never returns `CUSTOMER_REFERENCED`.
+
+**Evidence (CUST-API-06, 2026-09-21):** Memory `customers.delete.test.ts` + live `customers.delete.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Unreferenced active/archived delete → 200; detail/list absent. Referenced (one/multiple/archived-referenced) → 409 `CUSTOMER_REFERENCED`; customer + jobs remain; no DB leak (`23503`/FK text absent). Unknown/cross-tenant identical generic 404 (cross-tenant referenced still 404, not 409). Idempotent success replay + `IDEMPOTENCY_MISMATCH` + referenced 409 replay. FK `ON DELETE RESTRICT` remains defense-in-depth (pre-check + 23503 → same API conflict).
 
 **Tests.** Unreferenced delete; referenced 409; archived-but-referenced 409; cross-tenant 404; API role cannot DELETE another tenant’s row via SQL.
 
@@ -336,7 +345,7 @@ Cannot set `archived_at` here. Duplicate-email protocol applies when the new nor
 
 ## GET /v1/jobs
 
-PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 (DEC-CUST-006). This is not a second jobs datastore.
+PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 (DEC-CUST-006). S05 Jobs-tab buckets: DEC-JOB-001. This is not a second jobs datastore.
 
 | | |
 |---|---|
@@ -345,18 +354,38 @@ PRD: search, state, archive filter, page. Additive filter `customer_id` for S19 
 | Authorization | Owner workspace. If `customer_id` is present, that customer must belong to the same workspace or the call is generic 404 |
 | Idempotency-Key | No |
 | If-Match | No |
-| Entities | `jobs` (and existence check on `customers` when filtered) |
+| Entities | `jobs` joined to `customers` for card name (same workspace); existence check on `customers` when `customer_id` filtered |
 | Tenant isolation | Never return another workspace’s jobs. Foreign `customer_id` is 404, not an empty list (avoids existence oracle vs GET customer) |
 
-**Query.** `cursor?`, `limit?`, `search?`, `state?` / archive filter as PRD, plus `customer_id?`.
+**Query.**
+- `customer_id?` — omit for S05 general workspace list; supply for S19 associated jobs (DEC-CUST-006).
+- `bucket?` — S05 Jobs-tab filter: `active` | `finished` | `archived` (DEC-JOB-001).
+- `state?` — legacy: `all` | `active` (lifecycle <> archived) | `archived` | a specific lifecycle. Mutually exclusive with `bucket` (both → 422).
+- `cursor?`, `limit?` (default 25, max 100), `search?` (Job title + Customer name, trim, case-insensitive partial).
 
-**Response `data`.** `{ items, next_cursor }` with job summary fields sufficient for S19: `id`, `title`, `lifecycle`, `updated_at`, `customer_id`. Do not include internal notes on a Customer screen if avoidable; S19 needs associated jobs, not a full job editor.
+**Defaults.**
+- `customer_id` omitted and neither `bucket` nor `state` → **`bucket=active`** (S05).
+- `customer_id` supplied and neither `bucket` nor `state` → **`state=all`** (CUST-API-03 preserved).
 
-**Errors.** 401; 404 if `customer_id` not in workspace; 422 query.
+**S05 bucket lifecycle sets (DEC-JOB-001).**
+- Active → `draft`, `active`, `invoiced`
+- Finished → `finished`, `canceled`
+- Archived → `archived`  
+Archived bucket uses `lifecycle='archived'` only (not `archived_from_state`).
 
-**Tests.** Filter returns only that customer’s jobs; other owner’s customer_id 404; empty jobs for a valid own customer is `items: []`, not 404.
+**Ordering.** `(updated_at, id) DESC`.
 
-Full Jobs feature (lifecycle actions, documents) is out of scope except as needed for this filter and POST below.
+**Response `data`.** `{ items, next_cursor }` JobSummary:
+`id`, `title`, `lifecycle`, `updated_at`, `customer_id`, `customer: { id, name }`.  
+Do not include `workspace_id`, `created_by`, `internal_notes`, entitlement, version, customer email/phone, or site summary in this slice.
+
+**Errors.** 401; 404 if `customer_id` not in workspace (unknown and cross-tenant identical); 422 query (malformed `customer_id`, invalid `bucket`/`state`/`limit`/`cursor`, or both `bucket` and `state`).
+
+**Tests.** General Active default; bucket mappings; title/name search; isolation; cursor; customer-scoped regression; create appears on list. Memory `jobs.list.test.ts` + live `jobs.list.live.test.ts` + `jobs.list.s05.live.test.ts` on `vlpjaamdjtmtqtpwbhzq`.
+
+**Evidence (S05 Jobs-list API, 2026-09-22):** DEC-JOB-001 recorded. General `GET /v1/jobs` + `bucket` + title/customer-name search + customer summary DTO. Customer-scoped `GET /v1/jobs?customer_id=` remains VERIFIED. Android S05 Jobs list UI is **not** claimed.
+
+Full Jobs feature (lifecycle mutation APIs, documents, Job detail S08, Android Jobs tab) remains out of scope except create (CUST-JOB-01) and this list prerequisite.
 
 ---
 
@@ -376,10 +405,17 @@ PRD: client UUID, customer, title, site, mode; create draft.
 
 **Request (minimum).** `{ "id": "uuid", "customer_id": "uuid", "title": "string", "site_address": object | null, "no_site": boolean, "mode": "quote" | "direct_invoice" }`
 
+**Site / no_site (PRD VAL02).** `no_site: true` → `site_address` must be null/absent. `no_site: false` → `site_address` required (US address VAL02). Billing address is not accepted here.
+
+**Server defaults.** `lifecycle=draft`, `version=1`, `scope_version=0`. Client cannot set workspace/lifecycle/version/scope/entitlement/internal fields. `mode` is accepted for the create contract (future `job_created` analytics); document draft rows are not created in this slice.
+
+**Response `data`.** Created job: JobSummary fields (`id`, `title`, `lifecycle`, `updated_at`, `customer_id`, `customer: { id, name }`) plus `version`, `scope_version`, `no_site`, `site_address`, `mode`. Do not include `workspace_id`, `created_by`, `internal_notes`, or entitlement fields.
+
 Do not implement quote editor here. Creating the draft document row may wait for Quote; a job header is enough for Customer reference tests if domain requires a draft — if `document_drafts` is not migrated yet, persist the job only.
 
 **Tests.** Bind active customer; archived customer rejected; foreign customer_id 404; job appears on `GET /jobs?customer_id=`.
 
+**Evidence (CUST-JOB-01 API, 2026-09-21):** Memory `jobs.create.test.ts` + live `jobs.create.live.test.ts` on development US (`vlpjaamdjtmtqtpwbhzq`). Active create → 201 draft/version=1/scope_version=0; list-by-customer includes row; idempotent replay; `IDEMPOTENCY_MISMATCH`; unknown/cross-tenant identical 404; archived → 422 `CUSTOMER_ARCHIVED`. S06 mobile Create Job / Customer picker UI is VERIFIED (physical Android 2026-09-22).
 ---
 
 ## Tenant-isolation tests (all Customer routes)

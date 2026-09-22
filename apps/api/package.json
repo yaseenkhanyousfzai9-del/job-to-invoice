@@ -1,0 +1,20 @@
+{
+  "name": "@job-to-invoice/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --import ./src/load-dev-env.ts src/server.ts",
+    "start": "tsx --import ./src/load-dev-env.ts src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "tsx --import ./src/load-dev-env.ts --test --test-concurrency=1 src/app.test.ts src/dev-db.security.test.ts src/customers.security.test.ts src/jobs.security.test.ts src/customers.create.test.ts src/customers.create.live.test.ts src/customers.list.test.ts src/customers.list.live.test.ts src/customers.detail.test.ts src/customers.detail.live.test.ts src/customers.update.test.ts src/customers.update.live.test.ts src/customers.archive.test.ts src/customers.archive.live.test.ts src/customers.delete.test.ts src/customers.delete.live.test.ts src/jobs.list.test.ts src/jobs.list.live.test.ts src/jobs.list.s05.live.test.ts src/jobs.create.test.ts src/jobs.create.live.test.ts src/dev-env-bootstrap.test.ts",
+    "build": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@job-to-invoice/domain": "*",
+    "fastify": "^5.6.0",
+    "jose": "^6.1.0",
+    "postgres": "^3.4.7"
+  }
+}
