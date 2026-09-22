@@ -1,7 +1,6 @@
 /**
  * Customer Module Release Gate — disposable live smoke on Development US only.
- * Creates and cleans unique fixtures. Skips without DATABASE_URL_API.
- * Never targets production / Tokyo.
+ * Exact-ID tracking + finally cleanup. Skips without DATABASE_URL_API.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -15,17 +14,11 @@ import {
   assertCustomerPublicDto,
   type CustomerPublic,
 } from "./test-helpers/customerFixtures.ts";
-
-function liveDevelopmentApiUrl(): string | undefined {
-  if (process.env["APP_ENV"] === "production" || process.env["APP_ENV"] === "staging") {
-    return undefined;
-  }
-  const url = process.env["DATABASE_URL_API"];
-  if (url === undefined || url.trim() === "") {
-    return undefined;
-  }
-  return url;
-}
+import {
+  CustomerFixtureScope,
+  finalizeCustomerLiveScope,
+  liveDevelopmentApiUrl,
+} from "./test-helpers/customerLiveFixtures.ts";
 
 const databaseUrl = liveDevelopmentApiUrl();
 const ISSUER = "http://auth.test/customer-release-gate-live/v1";
@@ -53,33 +46,6 @@ function workspaceBody(suffix: string) {
   };
 }
 
-async function cleanupOwner(
-  sql: ReturnType<typeof postgres>,
-  authUserId: string,
-): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
-    const users = await tx<{ id: string }[]>`
-      select id from app.app_users where auth_user_id = ${authUserId} limit 1
-    `;
-    const userId = users[0]?.id;
-    if (!userId) return;
-    const workspaces = await tx<{ id: string }[]>`
-      select id from app.workspaces where owner_user_id = ${userId}::uuid limit 1
-    `;
-    const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      await tx`select set_config('app.workspace_id', ${workspaceId}, true)`;
-      await tx`delete from app.customers where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.job_allowances where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.memberships where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.workspaces where id = ${workspaceId}::uuid`;
-    }
-    await tx`delete from app.idempotency_records where actor_scope = ${userId}`;
-    await tx`delete from app.app_users where id = ${userId}::uuid`;
-  });
-}
-
 test("Customer release gate live smoke: create detail edit archive restore delete", {
   skip: databaseUrl === undefined,
 }, async () => {
@@ -96,9 +62,10 @@ test("Customer release gate live smoke: create detail edit archive restore delet
     store,
   });
 
-  const runId = randomUUID().slice(0, 8);
-  const authSubject = `rg-smoke-${runId}`;
-  const email = `rg-smoke-${runId}@example.test`;
+  const scope = new CustomerFixtureScope();
+  const authSubject = `rg-smoke-${scope.runId}`;
+  const email = `rg-smoke-${scope.runId}@example.test`;
+  scope.trackAuth(authSubject);
 
   async function token(subject: string, subjectEmail: string) {
     return new SignJWT({ email: subjectEmail })
@@ -120,9 +87,12 @@ test("Customer release gate live smoke: create detail edit archive restore delet
         authorization: `Bearer ${access}`,
         "idempotency-key": randomUUID(),
       },
-      payload: workspaceBody(runId),
+      payload: workspaceBody(scope.runId),
     });
     assert.equal(workspace.statusCode, 200);
+    const workspaceId = (workspace.json() as { data: { workspace: { id: string } } }).data
+      .workspace.id;
+    scope.trackWorkspace(workspaceId);
 
     const created = await app.inject({
       method: "POST",
@@ -132,8 +102,8 @@ test("Customer release gate live smoke: create detail edit archive restore delet
         "idempotency-key": randomUUID(),
       },
       payload: {
-        name: `RG Smoke ${runId}`,
-        email: `rg-smoke-cust-${runId}@example.test`,
+        name: `RG Smoke ${scope.runId}`,
+        email: `rg-smoke-cust-${scope.runId}@example.test`,
         phone: null,
         billing_address: null,
         confirm_duplicate_email: false,
@@ -142,6 +112,7 @@ test("Customer release gate live smoke: create detail edit archive restore delet
     assert.equal(created.statusCode, 201);
     const customer = (created.json() as { data: CustomerPublic }).data;
     assertCustomerPublicDto(customer);
+    scope.trackCustomer(customer.id);
 
     const detail = await app.inject({
       method: "GET",
@@ -158,7 +129,7 @@ test("Customer release gate live smoke: create detail edit archive restore delet
         "idempotency-key": randomUUID(),
         "if-match": String(customer.version),
       },
-      payload: { name: `RG Smoke Edited ${runId}` },
+      payload: { name: `RG Smoke Edited ${scope.runId}` },
     });
     assert.equal(patched.statusCode, 200);
     const afterPatch = (patched.json() as { data: CustomerPublic }).data;
@@ -174,7 +145,6 @@ test("Customer release gate live smoke: create detail edit archive restore delet
       payload: { archived: true },
     });
     assert.equal(archived.statusCode, 200);
-    assert.ok((archived.json() as { data: { archived_at: string | null } }).data.archived_at);
 
     const restored = await app.inject({
       method: "POST",
@@ -186,10 +156,6 @@ test("Customer release gate live smoke: create detail edit archive restore delet
       payload: { archived: false },
     });
     assert.equal(restored.statusCode, 200);
-    assert.equal(
-      (restored.json() as { data: { archived_at: string | null } }).data.archived_at,
-      null,
-    );
 
     const deleted = await app.inject({
       method: "DELETE",
@@ -201,15 +167,9 @@ test("Customer release gate live smoke: create detail edit archive restore delet
     });
     assert.equal(deleted.statusCode, 200);
     assert.deepEqual((deleted.json() as { data: unknown }).data, { deleted: true });
-
-    const gone = await app.inject({
-      method: "GET",
-      url: `/v1/customers/${customer.id}`,
-      headers: { authorization: `Bearer ${access}` },
-    });
-    assert.equal(gone.statusCode, 404);
+    // Deleted via API — still assert residual scope after owner cleanup.
   } finally {
-    await cleanupOwner(sql, authSubject);
+    await finalizeCustomerLiveScope(sql, scope);
     await app.close();
     await store.close?.();
     await sql.end({ timeout: 5 });

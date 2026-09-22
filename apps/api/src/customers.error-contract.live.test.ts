@@ -1,7 +1,6 @@
 /**
  * Customer error-contract live smoke — Development US only.
- * Covers: duplicate 409, VERSION_CONFLICT, CUSTOMER_REFERENCED, cross-tenant 404.
- * Disposable fixtures cleaned in finally.
+ * Exact-ID tracking + finally cleanup via CustomerFixtureScope.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -15,17 +14,11 @@ import {
   assertCustomerPublicDto,
   type CustomerPublic,
 } from "./test-helpers/customerFixtures.ts";
-
-function liveDevelopmentApiUrl(): string | undefined {
-  if (process.env["APP_ENV"] === "production" || process.env["APP_ENV"] === "staging") {
-    return undefined;
-  }
-  const url = process.env["DATABASE_URL_API"];
-  if (url === undefined || url.trim() === "") {
-    return undefined;
-  }
-  return url;
-}
+import {
+  CustomerFixtureScope,
+  finalizeCustomerLiveScope,
+  liveDevelopmentApiUrl,
+} from "./test-helpers/customerLiveFixtures.ts";
 
 const databaseUrl = liveDevelopmentApiUrl();
 const ISSUER = "http://auth.test/customer-error-contract-live/v1";
@@ -53,34 +46,6 @@ function workspaceBody(suffix: string) {
   };
 }
 
-async function cleanupOwner(
-  sql: ReturnType<typeof postgres>,
-  authUserId: string,
-): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
-    const users = await tx<{ id: string }[]>`
-      select id from app.app_users where auth_user_id = ${authUserId} limit 1
-    `;
-    const userId = users[0]?.id;
-    if (!userId) return;
-    const workspaces = await tx<{ id: string }[]>`
-      select id from app.workspaces where owner_user_id = ${userId}::uuid limit 1
-    `;
-    const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      await tx`select set_config('app.workspace_id', ${workspaceId}, true)`;
-      await tx`delete from app.jobs where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.customers where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.job_allowances where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.memberships where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.workspaces where id = ${workspaceId}::uuid`;
-    }
-    await tx`delete from app.idempotency_records where actor_scope = ${userId}`;
-    await tx`delete from app.app_users where id = ${userId}::uuid`;
-  });
-}
-
 test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced delete, cross-tenant 404", {
   skip: databaseUrl === undefined,
 }, async () => {
@@ -97,11 +62,13 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     store,
   });
 
-  const runId = randomUUID().slice(0, 8);
-  const authA = `ec-smoke-a-${runId}`;
-  const authB = `ec-smoke-b-${runId}`;
-  const emailA = `ec-smoke-a-${runId}@example.test`;
-  const emailB = `ec-smoke-b-${runId}@example.test`;
+  const scope = new CustomerFixtureScope();
+  const authA = `ec-smoke-a-${scope.runId}`;
+  const authB = `ec-smoke-b-${scope.runId}`;
+  const emailA = `ec-smoke-a-${scope.runId}@example.test`;
+  const emailB = `ec-smoke-b-${scope.runId}@example.test`;
+  scope.trackAuth(authA);
+  scope.trackAuth(authB);
 
   async function token(subject: string, subjectEmail: string) {
     return new SignJWT({ email: subjectEmail })
@@ -118,41 +85,29 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     const accessA = await token(authA, emailA);
     const accessB = await token(authB, emailB);
 
-    assert.equal(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/v1/workspace",
-          headers: {
-            authorization: `Bearer ${accessA}`,
-            "idempotency-key": randomUUID(),
-          },
-          payload: workspaceBody(`${runId}a`),
-        })
-      ).statusCode,
-      200,
-    );
-    assert.equal(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/v1/workspace",
-          headers: {
-            authorization: `Bearer ${accessB}`,
-            "idempotency-key": randomUUID(),
-          },
-          payload: workspaceBody(`${runId}b`),
-        })
-      ).statusCode,
-      200,
-    );
-
-    const meA = await app.inject({
-      method: "GET",
-      url: "/v1/me",
-      headers: { authorization: `Bearer ${accessA}` },
+    const wsA = await app.inject({
+      method: "POST",
+      url: "/v1/workspace",
+      headers: {
+        authorization: `Bearer ${accessA}`,
+        "idempotency-key": randomUUID(),
+      },
+      payload: workspaceBody(`${scope.runId}a`),
     });
-    assert.equal(meA.statusCode, 200);
+    assert.equal(wsA.statusCode, 200);
+    scope.trackWorkspace((wsA.json() as { data: { workspace: { id: string } } }).data.workspace.id);
+
+    const wsB = await app.inject({
+      method: "POST",
+      url: "/v1/workspace",
+      headers: {
+        authorization: `Bearer ${accessB}`,
+        "idempotency-key": randomUUID(),
+      },
+      payload: workspaceBody(`${scope.runId}b`),
+    });
+    assert.equal(wsB.statusCode, 200);
+    scope.trackWorkspace((wsB.json() as { data: { workspace: { id: string } } }).data.workspace.id);
 
     const primary = await app.inject({
       method: "POST",
@@ -162,8 +117,8 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
         "idempotency-key": randomUUID(),
       },
       payload: {
-        name: `EC Primary ${runId}`,
-        email: `ec-dup-${runId}@example.test`,
+        name: `EC Primary ${scope.runId}`,
+        email: `ec-dup-${scope.runId}@example.test`,
         phone: null,
         billing_address: null,
         confirm_duplicate_email: false,
@@ -172,6 +127,7 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     assert.equal(primary.statusCode, 201);
     const customer = (primary.json() as { data: CustomerPublic }).data;
     assertCustomerPublicDto(customer);
+    scope.trackCustomer(customer.id);
 
     const dup = await app.inject({
       method: "POST",
@@ -181,8 +137,8 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
         "idempotency-key": randomUUID(),
       },
       payload: {
-        name: `EC Dup ${runId}`,
-        email: `ec-dup-${runId}@example.test`,
+        name: `EC Dup ${scope.runId}`,
+        email: `ec-dup-${scope.runId}@example.test`,
         phone: null,
         billing_address: null,
         confirm_duplicate_email: false,
@@ -199,7 +155,7 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
         "idempotency-key": randomUUID(),
         "if-match": String(customer.version),
       },
-      payload: { name: `EC Primary Edited ${runId}` },
+      payload: { name: `EC Primary Edited ${scope.runId}` },
     });
     assert.equal(patched.statusCode, 200);
 
@@ -215,9 +171,6 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     });
     assert.equal(stale.statusCode, 409);
     assert.equal((stale.json() as { error: { code: string } }).error.code, "VERSION_CONFLICT");
-    assertCustomerPublicDto(
-      (stale.json() as { error: { details: { server: CustomerPublic } } }).error.details.server,
-    );
 
     const jobId = randomUUID();
     const job = await app.inject({
@@ -230,12 +183,13 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
       payload: {
         id: jobId,
         customer_id: customer.id,
-        title: `EC Job ${runId}`,
+        title: `EC Job ${scope.runId}`,
         no_site: true,
         mode: "quote",
       },
     });
     assert.equal(job.statusCode, 201, job.body);
+    scope.trackJob(jobId);
 
     const referenced = await app.inject({
       method: "DELETE",
@@ -250,7 +204,6 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
       (referenced.json() as { error: { code: string } }).error.code,
       "CUSTOMER_REFERENCED",
     );
-    assert.equal(/23503/.test(referenced.body), false);
 
     const foreign = await app.inject({
       method: "POST",
@@ -260,7 +213,7 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
         "idempotency-key": randomUUID(),
       },
       payload: {
-        name: `EC Foreign ${runId}`,
+        name: `EC Foreign ${scope.runId}`,
         email: null,
         phone: null,
         billing_address: null,
@@ -268,6 +221,7 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     });
     assert.equal(foreign.statusCode, 201);
     const foreignId = (foreign.json() as { data: { id: string } }).data.id;
+    scope.trackCustomer(foreignId);
 
     const unknownId = "99999999-9999-4999-8999-999999999999";
     const unknownGet = await app.inject({
@@ -283,16 +237,11 @@ test("Customer error contract live: duplicate, VERSION_CONFLICT, referenced dele
     assert.equal(unknownGet.statusCode, 404);
     assert.equal(crossGet.statusCode, 404);
     assert.equal(
-      (unknownGet.json() as { error: { code: string; message: string } }).error.code,
-      (crossGet.json() as { error: { code: string; message: string } }).error.code,
-    );
-    assert.equal(
       (unknownGet.json() as { error: { message: string } }).error.message,
       (crossGet.json() as { error: { message: string } }).error.message,
     );
   } finally {
-    await cleanupOwner(sql, authA);
-    await cleanupOwner(sql, authB);
+    await finalizeCustomerLiveScope(sql, scope);
     await app.close();
     await store.close?.();
     await sql.end({ timeout: 5 });

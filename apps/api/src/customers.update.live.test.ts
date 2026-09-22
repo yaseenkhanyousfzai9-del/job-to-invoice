@@ -5,17 +5,10 @@ import postgres from "postgres";
 import { buildApp } from "./app.ts";
 import { createStaticKeyVerifier } from "./auth/jwt.ts";
 import { createPostgresAuthStore } from "./store/postgres.ts";
-
-function liveDevelopmentApiUrl(): string | undefined {
-  if (process.env["APP_ENV"] === "production" || process.env["APP_ENV"] === "staging") {
-    return undefined;
-  }
-  const url = process.env["DATABASE_URL_API"];
-  if (url === undefined || url.trim() === "") {
-    return undefined;
-  }
-  return url;
-}
+import {
+  cleanupDisposableOwnerByAuth,
+  liveDevelopmentApiUrl,
+} from "./test-helpers/customerLiveFixtures.ts";
 
 const databaseUrl = liveDevelopmentApiUrl();
 
@@ -49,31 +42,6 @@ function uuidFromSeed(n: number): string {
   return `dddddddd-dddd-4ddd-8ddd-${hex}`;
 }
 
-async function cleanupOwner(sql: ReturnType<typeof postgres>, authUserId: string): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
-    const users = await tx<{ id: string }[]>`
-      select id from app.app_users where auth_user_id = ${authUserId} limit 1
-    `;
-    const userId = users[0]?.id;
-    if (!userId) return;
-    const workspaces = await tx<{ id: string }[]>`
-      select id from app.workspaces where owner_user_id = ${userId}::uuid limit 1
-    `;
-    const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      await tx`select set_config('app.workspace_id', ${workspaceId}, true)`;
-      await tx`delete from app.jobs where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.customers where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.job_allowances where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.memberships where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.workspaces where id = ${workspaceId}::uuid`;
-    }
-    await tx`delete from app.idempotency_records where actor_scope = ${userId}`;
-    await tx`delete from app.app_users where id = ${userId}::uuid`;
-  });
-}
-
 test("live PATCH /v1/customers/{id} version, stale, cross-tenant, duplicate, idempotency", {
   skip: databaseUrl === undefined,
 }, async () => {
@@ -105,8 +73,8 @@ test("live PATCH /v1/customers/{id} version, stale, cross-tenant, duplicate, ide
   }
 
   try {
-    await cleanupOwner(sql, authA);
-    await cleanupOwner(sql, authB);
+    await cleanupDisposableOwnerByAuth(sql, authA);
+    await cleanupDisposableOwnerByAuth(sql, authB);
 
     const accessA = await token(authA, "api04-a@example.test");
     const accessB = await token(authB, "api04-b@example.test");
@@ -282,8 +250,8 @@ test("live PATCH /v1/customers/{id} version, stale, cross-tenant, duplicate, ide
     `;
     assert.equal(docsAfter[0]?.exists, false);
   } finally {
-    await cleanupOwner(sql, authA);
-    await cleanupOwner(sql, authB);
+    await cleanupDisposableOwnerByAuth(sql, authA);
+    await cleanupDisposableOwnerByAuth(sql, authB);
     await app.close();
     await store.close?.();
     await sql.end({ timeout: 5 });

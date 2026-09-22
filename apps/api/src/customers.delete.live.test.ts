@@ -5,17 +5,10 @@ import postgres from "postgres";
 import { buildApp } from "./app.ts";
 import { createStaticKeyVerifier } from "./auth/jwt.ts";
 import { createPostgresAuthStore } from "./store/postgres.ts";
-
-function liveDevelopmentApiUrl(): string | undefined {
-  if (process.env["APP_ENV"] === "production" || process.env["APP_ENV"] === "staging") {
-    return undefined;
-  }
-  const url = process.env["DATABASE_URL_API"];
-  if (url === undefined || url.trim() === "") {
-    return undefined;
-  }
-  return url;
-}
+import {
+  cleanupDisposableOwnerByAuth,
+  liveDevelopmentApiUrl,
+} from "./test-helpers/customerLiveFixtures.ts";
 
 const databaseUrl = liveDevelopmentApiUrl();
 
@@ -55,31 +48,6 @@ function assertSafeErrorBody(body: string) {
   assert.equal(/violates/i.test(body), false);
   assert.equal(/postgres/i.test(body), false);
   assert.equal(/jobs_customer/i.test(body), false);
-}
-
-async function cleanupOwner(sql: ReturnType<typeof postgres>, authUserId: string): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`select set_config('app.auth_user_id', ${authUserId}, true)`;
-    const users = await tx<{ id: string }[]>`
-      select id from app.app_users where auth_user_id = ${authUserId} limit 1
-    `;
-    const userId = users[0]?.id;
-    if (!userId) return;
-    const workspaces = await tx<{ id: string }[]>`
-      select id from app.workspaces where owner_user_id = ${userId}::uuid limit 1
-    `;
-    const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      await tx`select set_config('app.workspace_id', ${workspaceId}, true)`;
-      await tx`delete from app.jobs where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.customers where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.job_allowances where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.memberships where workspace_id = ${workspaceId}::uuid`;
-      await tx`delete from app.workspaces where id = ${workspaceId}::uuid`;
-    }
-    await tx`delete from app.idempotency_records where actor_scope = ${userId}`;
-    await tx`delete from app.app_users where id = ${userId}::uuid`;
-  });
 }
 
 async function listContains(
@@ -131,8 +99,8 @@ test("CUST-API-06 live US: delete unreferenced, block referenced, cross-tenant 4
   }
 
   try {
-    await cleanupOwner(sql, authA);
-    await cleanupOwner(sql, authB);
+    await cleanupDisposableOwnerByAuth(sql, authA);
+    await cleanupDisposableOwnerByAuth(sql, authB);
 
     const accessA = await token(authA, "del-a@example.test");
     const accessB = await token(authB, "del-b@example.test");
@@ -392,8 +360,8 @@ test("CUST-API-06 live US: delete unreferenced, block referenced, cross-tenant 4
     });
     assert.equal(stillB.statusCode, 200);
   } finally {
-    await cleanupOwner(sql, authA);
-    await cleanupOwner(sql, authB);
+    await cleanupDisposableOwnerByAuth(sql, authA);
+    await cleanupDisposableOwnerByAuth(sql, authB);
     await app.close();
     await store.close?.();
     await sql.end({ timeout: 5 });

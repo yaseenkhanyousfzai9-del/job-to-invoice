@@ -321,7 +321,7 @@ npm run verify:customer
 
 Composes:
 
-1. `npm run test:customer-release-gate -w @job-to-invoice/api` → `customers.release-gate.test.ts` + `customers.error-contract.test.ts`
+1. `npm run test:customer-release-gate -w @job-to-invoice/api` → `customers.release-gate.test.ts` + `customers.error-contract.test.ts` + `customers.fixture-cleanup.test.ts`
 2. `npm run test:customer -w @job-to-invoice/mobile` → existing S07/S19 mobile regression
 
 Optional live Development US smoke (requires `DATABASE_URL_API` for project `vlpjaamdjtmtqtpwbhzq`; skips otherwise):
@@ -330,9 +330,9 @@ Optional live Development US smoke (requires `DATABASE_URL_API` for project `vlp
 npm run test:customer-release-gate:live -w @job-to-invoice/api
 ```
 
-Runs lifecycle smoke + error-contract live smoke (duplicate / VERSION_CONFLICT / CUSTOMER_REFERENCED / cross-tenant 404).
+Runs lifecycle smoke + error-contract live smoke. Both use `CustomerFixtureScope` + `finalizeCustomerLiveScope` (jobs before customers; residual assert `RUN_CUSTOMERS_REMAINING=0` / `RUN_JOBS_REMAINING=0`).
 
-Broader Customer API memory suite (security + per-route suites + contract + release gate + error contract):
+Broader Customer API memory suite (security + per-route suites + contract + release gate + error contract + fixture cleanup):
 
 ```bash
 npm run test:customer -w @job-to-invoice/api
@@ -340,20 +340,69 @@ npm run test:customer -w @job-to-invoice/api
 
 ### Expected pass criteria
 
-- `verify:customer` exits **0**
+- `verify:customer` exits **0** (safe to run repeatedly; memory path leaves no DB rows)
 - Memory release gate covers create → detail → Active list → duplicate warn/confirm → edit / version conflict → archive / restore → Job FK → referenced delete 409 → unreferenced delete → deleted 404 → cross-tenant read/mutation 404 → cross-workspace Job bind reject → public DTO without `workspace_id` / `normalized_email` / `created_by`
 - Memory **error contract** locks the matrix above (401/422/409/404 codes, generic 404 privacy, no DB/internal leaks)
+- Memory **fixture cleanup** proves finally-on-failure + concurrent scope isolation
 - Mobile suite covers S07 create/validation/duplicate and S19 list/search/detail/edit/archive/restore/delete/referenced-delete/network/retry/state preservation
-- Live smoke (when env present): lifecycle CRUD smoke + error conflicts with disposable fixtures cleaned afterward
+- Live smoke (when env present): lifecycle CRUD smoke + error conflicts with disposable fixtures cleaned afterward; tracked residual customers/jobs = 0
 
 ### Known infrastructure flake
 
-Long serialized live suites against Supabase Development US may hit `CONNECT_TIMEOUT` (connection-pool exhaustion). That is **not** a Customer product failure.
+Long serialized live suites against Supabase Development US may hit `CONNECT_TIMEOUT` (connection-pool exhaustion) or intermittent JWKS fetch failures. That is **not** a Customer product failure.
 
 - Do **not** change product code for timeouts alone
 - Re-run only the affected live file with `--test-concurrency=1` (e.g. `test:customer-release-gate:live`)
 - Distinguish infrastructure flake from assertion failures on contract behavior
 
+Customer live files always use `--test-concurrency=1` via package scripts.
+
 ### Post-merge requirement
 
 After Team A + Team B final merge, run `npm run verify:customer` (and live smoke when Development US credentials are available) before treating the Customer module as still green.
+
+---
+
+## Customer Test Fixture Safety
+
+Rules for Team A Customer live/memory tests. **Development US only** (`vlpjaamdjtmtqtpwbhzq`). Never production. Never Tokyo.
+
+### Ownership
+
+- Disposable owners use unique `auth_user_id` / run suffix (`CustomerFixtureScope.runId`)
+- Authoritative cleanup identity: **exact created row IDs** tracked by the test scope and/or disposable owner auth subject
+- Diagnostics labels may include the run suffix in names/emails; they are **not** cleanup keys
+
+### Cleanup
+
+- Always `try` / `finally` (or equivalent) so failed assertions still clean
+- Order: **Jobs → Customers → allowances → memberships → workspace → idempotency → app_user**
+- Shared helper: `apps/api/src/test-helpers/customerLiveFixtures.ts`
+  - `cleanupDisposableOwnerByAuth`
+  - `finalizeCustomerLiveScope` (cleans tracked auths, then asserts residuals)
+  - `CustomerFixtureScope` / `MemoryCustomerFixtureRegistry` for ownership checks
+- Cleanup errors are **not** swallowed (`AggregateError` / rethrow)
+- Scope **refuses** untracked / foreign-owned IDs
+
+### Forbidden
+
+- `DELETE … WHERE name LIKE …`
+- `DELETE … WHERE email LIKE …`
+- Cleanup by display name or Job title alone
+- Broad deletes of pre-existing workspace data outside the disposable owner
+
+### Serialization / flakes
+
+- All Customer live scripts run with `--test-concurrency=1`
+- `CONNECT_TIMEOUT` / JWKS reachability flakes → retry that file only; do not weaken product RLS or pool settings for green CI
+
+### Repeated `verify:customer`
+
+Memory `verify:customer` leaves no commercial DB rows and is safe to run repeatedly. Live `test:customer-release-gate:live` must end with:
+
+```
+RUN_CUSTOMERS_REMAINING=0
+RUN_JOBS_REMAINING=0
+```
+
+for IDs tracked in that run.
