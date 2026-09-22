@@ -3,9 +3,41 @@
  * File `app/(app)/customers/index.tsx` maps to `/(app)/customers` — never `/customers/index`.
  * File `app/(app)/customers/[id]/index.tsx` maps to pathname `/(app)/customers/[id]` with `{ id }` param.
  * File `app/(app)/customers/[id]/edit.tsx` maps to pathname `/(app)/customers/[id]/edit`.
+ *
+ * Create Job (`/(app)/jobs/new`) is **not** Customer-owned (S06 / Team B reconciliation).
+ * Customer create may return to that route via the documented param contract below only.
  */
 export const CUSTOMERS_LIST_HREF = "/(app)/customers" as const;
 export const CUSTOMERS_NEW_HREF = "/(app)/customers/new" as const;
+
+/**
+ * Shared navigation contract: after creating a Customer from the Create Job picker flow
+ * (`returnTo=create-job`), return with selection by **Customer.id** (+ name for display).
+ * Does not import Jobs UI/controllers. Team B may change the Create Job screen as long as
+ * these query params remain honored (or an equivalent selection API is adopted).
+ */
+export const CREATE_JOB_RETURN_PATHNAME = "/(app)/jobs/new" as const;
+
+export type CreateJobReturnHref = {
+  pathname: typeof CREATE_JOB_RETURN_PATHNAME;
+  params: {
+    selectedCustomerId: string;
+    selectedCustomerName: string;
+  };
+};
+
+export function createJobReturnHrefWithSelectedCustomer(
+  customerId: string,
+  customerName: string,
+): CreateJobReturnHref {
+  return {
+    pathname: CREATE_JOB_RETURN_PATHNAME,
+    params: {
+      selectedCustomerId: customerId,
+      selectedCustomerName: customerName,
+    },
+  };
+}
 
 /** FlatList must deliver row presses while the search keyboard is open (Android). */
 export const CUSTOMERS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;

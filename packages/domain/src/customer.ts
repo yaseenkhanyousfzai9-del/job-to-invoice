@@ -1,3 +1,14 @@
+/**
+ * Customer domain types and parsers.
+ *
+ * OWNERSHIP (Team A / Customer module):
+ * - `Customer` public DTO, `CustomerRecord`, list/query/archive/update inputs
+ * - Customer error helpers (`DUPLICATE_CUSTOMER_EMAIL`, `CUSTOMER_REFERENCED`, …)
+ * - Customer list cursor helpers (see `customer-list-cursor.ts`)
+ *
+ * Job-owned types (`JobSummary`, `JobCustomerSummary`, create-job inputs) live in `job.ts`.
+ * Customer Detail consumes `JobSummary` for associated-jobs read only — it does not own Job.
+ */
 import { parseOptionalBillingAddress, type UsAddress } from "./address.ts";
 import { validateOptionalEmail } from "./email.ts";
 import { conflict, validationFailed } from "./errors.ts";

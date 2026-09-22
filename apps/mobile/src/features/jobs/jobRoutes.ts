@@ -3,9 +3,18 @@
  * File `app/(app)/jobs/index.tsx` maps to `/(app)/jobs` — never `/jobs/index`.
  * File `app/(app)/jobs/new.tsx` maps to `/(app)/jobs/new` — never `/jobs/new/index`.
  * S08 Job Detail is not implemented — do not invent `/jobs/[id]`.
+ *
+ * OVERLAP / REFERENCE ONLY — not Customer module ownership. Final Jobs ownership reconciles with Team B.
+ * Customer create return selection uses the shared contract in `customerRoutes`
+ * (`createJobReturnHrefWithSelectedCustomer`); this module re-exports the same shape for S06 callers.
  */
+import {
+  CREATE_JOB_RETURN_PATHNAME,
+  createJobReturnHrefWithSelectedCustomer,
+} from "../customers/customerRoutes";
+
 export const JOBS_LIST_HREF = "/(app)/jobs" as const;
-export const CREATE_JOB_HREF = "/(app)/jobs/new" as const;
+export const CREATE_JOB_HREF = CREATE_JOB_RETURN_PATHNAME;
 
 /** FlatList must deliver filter / New job / Load more presses while search keyboard is open. */
 export const JOBS_LIST_KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;
@@ -27,18 +36,12 @@ export function createJobHref(params?: CreateJobHref["params"]): CreateJobHref {
   return { pathname: CREATE_JOB_HREF };
 }
 
-/** After in-sheet Customer create from Create Job, return with selection. */
+/** After in-sheet Customer create from Create Job, return with selection (shared Customer contract). */
 export function createJobHrefWithSelectedCustomer(
   customerId: string,
   customerName: string,
 ): CreateJobHref {
-  return {
-    pathname: CREATE_JOB_HREF,
-    params: {
-      selectedCustomerId: customerId,
-      selectedCustomerName: customerName,
-    },
-  };
+  return createJobReturnHrefWithSelectedCustomer(customerId, customerName);
 }
 
 export function customersNewHrefForCreateJob(): {

@@ -1,3 +1,11 @@
+/**
+ * Active Customer picker controller for Create Job (S06).
+ *
+ * OVERLAP / REFERENCE ONLY — not Customer module ownership.
+ * Provider-side contract consumed here is Customer-owned:
+ *   GET /v1/customers?state=active  (+ Customer.id / Customer.name)
+ * Team B may replace this UI/controller; preserve the Customer list contract.
+ */
 import type { Customer } from "@job-to-invoice/domain";
 import { DomainApiError, listCustomers, type CustomerListPage } from "../../lib/api";
 

@@ -1,3 +1,13 @@
+/**
+ * Job domain types and parsers.
+ *
+ * OWNERSHIP: Job module (Team B reconciliation for S05/S06 product evolution).
+ * Customer module **consumes** `JobSummary` / `customer_id` for associated-jobs and FK rules only.
+ * Do not treat this file as Customer-owned.
+ *
+ * Directional dependency: this module may import Customer list limit constants from `customer.ts`.
+ * `customer.ts` must not import this module (avoids a domain cycle).
+ */
 import { parseUsAddress, type UsAddress } from "./address.ts";
 import { AppError, validationFailed } from "./errors.ts";
 import { isUuid } from "./ids.ts";

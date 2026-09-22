@@ -18,8 +18,10 @@ import {
   submitCreateCustomer,
   type CustomerFormDraft,
 } from "../../../src/features/customers/createCustomerForm";
-import { customersListHrefWithCreatedFlag } from "../../../src/features/customers/customerRoutes";
-import { createJobHrefWithSelectedCustomer } from "../../../src/features/jobs/jobRoutes";
+import {
+  createJobReturnHrefWithSelectedCustomer,
+  customersListHrefWithCreatedFlag,
+} from "../../../src/features/customers/customerRoutes";
 import { useAuth } from "../../../src/providers/AuthProvider";
 import { colors, layout, typography } from "../../../src/theme/tokens";
 
@@ -102,7 +104,7 @@ export default function NewCustomerScreen() {
       setDraft(emptyCustomerFormDraft());
       if (returnToCreateJob) {
         router.replace(
-          createJobHrefWithSelectedCustomer(result.customer.id, result.customer.name),
+          createJobReturnHrefWithSelectedCustomer(result.customer.id, result.customer.name),
         );
       } else {
         router.replace(customersListHrefWithCreatedFlag());

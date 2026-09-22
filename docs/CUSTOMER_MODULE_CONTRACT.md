@@ -406,3 +406,43 @@ RUN_JOBS_REMAINING=0
 ```
 
 for IDs tracked in that run.
+
+---
+
+## Customer Module Dependency Boundary
+
+Status: audited on Team A `build/v1`. Customer remains **COMPLETE / FROZEN / INTEGRATION-READY**.
+
+### TEAM A OWNS
+
+- Customer persistence (`app.customers`, migrations)
+- Customer validation / domain parsers (`packages/domain` Customer types)
+- Customer APIs (`/v1/customers*`)
+- Customer UI (`/(app)/customers*`)
+- Customer security (workspace isolation, RLS assumptions, generic 404 privacy)
+- Customer public DTO (nine fields — see section B)
+
+### SHARED CONTRACTS
+
+- Authenticated access token (Bearer) + server-derived workspace membership
+- `Customer.id` → `Job.customer_id` (UUID identity only)
+- Customer-scoped Job summary read: `GET /v1/jobs?customer_id={customerId}` returning public `JobSummary`
+- Active Customer picker provider contract: `GET /v1/customers?state=active` exposing at least `Customer.id` + `Customer.name` (full public DTO is fine)
+- Optional Create Job return params after in-flow Customer create: `selectedCustomerId` + `selectedCustomerName` on `/(app)/jobs/new` (documented in `customerRoutes`; not a Jobs UI import)
+
+### TEAM A DOES NOT OWN
+
+- Jobs list (S05)
+- Create Job screen (S06)
+- Job Detail
+- Quotes
+- Invoices
+- Ledger
+- Approvals
+- Settings
+
+### Merge guidance
+
+Team B may replace or reconcile overlapping S05/S06 (and Auth) implementation later **without** changing the frozen Customer contract above. Customer Detail’s associated Jobs section must keep working against the shared `customer_id` jobs list contract even if Team A’s S05 list UI/controller is removed.
+
+Auth implementation files are **SHARED / FINAL MERGE RECONCILIATION REQUIRED** — Customer consumes session/token + 401 sign-out policy only; it does not own Auth product behavior.
