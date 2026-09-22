@@ -6,8 +6,8 @@ Branch evidence: `build/v1` (Customer CRUD / S07 / S19 VERIFIED).
 
 This document is for another developer or team consuming Customers. Do **not** invent a second Customer model.
 
-Related: `docs/TEAM_A_OVERLAP_NOTES.md` (S05/S06 are **not** Customer ownership).
-
+Related: `docs/TEAM_A_OVERLAP_NOTES.md` (S05/S06 are **not** Customer ownership).  
+Final handoff: `docs/CUSTOMER_HANDOFF_CHECKLIST.md`, `docs/CUSTOMER_BASELINE_MANIFEST.md`.
 ---
 
 ## A. Customer identity
