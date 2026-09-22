@@ -12,6 +12,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:customer": "npm run test:customer -w @job-to-invoice/api && npm run test:customer -w @job-to-invoice/mobile",
+    "verify:customer": "npm run test:customer-release-gate -w @job-to-invoice/api && npm run test:customer -w @job-to-invoice/mobile",
     "build": "npm run build --workspaces --if-present",
     "dev:api": "npm run dev -w @job-to-invoice/api",
     "dev:worker": "npm run dev -w @job-to-invoice/worker",

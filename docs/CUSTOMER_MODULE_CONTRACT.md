@@ -231,3 +231,53 @@ The following contracts are **stable for integration** unless a documented PRD d
 - `customer_id` Job relation (composite FK)
 
 Future teams must consume these contracts instead of creating a second Customer model or bypassing Fastify via Supabase REST for commercial Customer writes.
+
+---
+
+## Customer Module Release Gate
+
+Deterministic Customer-only regression for Team B / final integration. Does **not** own Jobs list (S05) or Create Job (S06) product suites.
+
+### Commands
+
+Primary (memory API lifecycle + mobile S07/S19):
+
+```bash
+npm run verify:customer
+```
+
+Composes:
+
+1. `npm run test:customer-release-gate -w @job-to-invoice/api` → `customers.release-gate.test.ts`
+2. `npm run test:customer -w @job-to-invoice/mobile` → existing S07/S19 mobile regression
+
+Optional live Development US smoke (requires `DATABASE_URL_API` for project `vlpjaamdjtmtqtpwbhzq`; skips otherwise):
+
+```bash
+npm run test:customer-release-gate:live -w @job-to-invoice/api
+```
+
+Broader Customer API memory suite (security + per-route suites + contract + release gate):
+
+```bash
+npm run test:customer -w @job-to-invoice/api
+```
+
+### Expected pass criteria
+
+- `verify:customer` exits **0**
+- Memory release gate covers create → detail → Active list → duplicate warn/confirm → edit / version conflict → archive / restore → Job FK → referenced delete 409 → unreferenced delete → deleted 404 → cross-tenant read/mutation 404 → cross-workspace Job bind reject → public DTO without `workspace_id` / `normalized_email` / `created_by`
+- Mobile suite covers S07 create/validation/duplicate and S19 list/search/detail/edit/archive/restore/delete/referenced-delete/network/retry/state preservation
+- Live smoke (when env present): create / detail / edit / archive / restore / delete with disposable fixtures cleaned afterward
+
+### Known infrastructure flake
+
+Long serialized live suites against Supabase Development US may hit `CONNECT_TIMEOUT` (connection-pool exhaustion). That is **not** a Customer product failure.
+
+- Do **not** change product code for timeouts alone
+- Re-run only the affected live file with `--test-concurrency=1` (e.g. `test:customer-release-gate:live`)
+- Distinguish infrastructure flake from assertion failures on contract behavior
+
+### Post-merge requirement
+
+After Team A + Team B final merge, run `npm run verify:customer` (and live smoke when Development US credentials are available) before treating the Customer module as still green.
